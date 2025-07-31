@@ -1,0 +1,28 @@
+$$ Basic dielectric-only test file for parser validation
+$$ Tests header parsing and simple dielectric layer definitions
+
+TECHNOLOGY = dielectric_test_generic
+GLOBAL_TEMPERATURE = 75.0
+REFERENCE_DIRECTION = HORIZONTAL
+BACKGROUND_ER = 3.8
+USE_SI_DENSITY = YES
+HALF_NODE_SCALE_FACTOR = 1.0
+
+$$ Simple dielectric stack
+DIELECTRIC bottom_oxide {
+    THICKNESS=1.2
+    ER=4.1
+    MEASURED_FROM=TOP_OF_CHIP
+}
+
+DIELECTRIC middle_nitride {
+    THICKNESS=0.8
+    ER=7.5
+    SW_T=0.4
+    TW_T=0.6
+}
+
+DIELECTRIC top_oxide {
+    THICKNESS=2.5
+    ER=3.9
+}

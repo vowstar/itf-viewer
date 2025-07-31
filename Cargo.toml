@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
+
+[package]
+name = "itf-viewer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Huang Rui <vowstar@gmail.com>"]
+description = "ITF (Interconnect Technology Format) file viewer with GUI visualization"
+license = "MIT"
+repository = "https://github.com/vowstar/itf-viewer"
+
+[dependencies]
+egui = "0.28"
+eframe = { version = "0.28", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "1.0"
+nom = "7.1"
+env_logger = "0.10"
+ctrlc = "3.4"
+rfd = "0.14"
+
+[dev-dependencies]
+approx = "0.5"
+tempfile = "3.8"
+
+[[bin]]
+name = "itf-viewer"
+path = "src/main.rs"
+
+[lib]
+name = "itf_viewer"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+debug = true

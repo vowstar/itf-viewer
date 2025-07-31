@@ -1,0 +1,42 @@
+$$ Via connectivity test case
+$$ Tests complex via connections and layer relationships
+
+TECHNOLOGY = via_test_generic
+GLOBAL_TEMPERATURE = 25.0
+
+$$ Substrate and diffusion regions
+DIELECTRIC substrate {THICKNESS=10.0 ER=11.9}
+CONDUCTOR pdiff {THICKNESS=0.2 RPSQ=100.0}
+CONDUCTOR ndiff {THICKNESS=0.2 RPSQ=80.0}
+
+$$ Gate and poly
+DIELECTRIC gate_oxide {THICKNESS=0.05 ER=3.9}
+CONDUCTOR poly_gate {THICKNESS=0.18 CRT1=4.0e-3 RPSQ=15.0 WMIN=0.06 SMIN=0.06}
+
+$$ Metal stack
+DIELECTRIC pmd {THICKNESS=0.6 ER=4.2}
+CONDUCTOR metal1 {THICKNESS=0.25 CRT1=2.8e-3 RPSQ=0.1 WMIN=0.08 SMIN=0.08}
+
+DIELECTRIC imd1 {THICKNESS=0.7 ER=4.2}
+CONDUCTOR metal2 {THICKNESS=0.3 CRT1=2.5e-3 RPSQ=0.08 WMIN=0.1 SMIN=0.1}
+
+DIELECTRIC imd2 {THICKNESS=0.8 ER=4.2}
+CONDUCTOR metal3 {THICKNESS=0.35 CRT1=2.2e-3 RPSQ=0.06 WMIN=0.12 SMIN=0.12}
+
+$$ Top metal and passivation
+DIELECTRIC imd3 {THICKNESS=1.2 ER=4.2}
+CONDUCTOR top_metal {THICKNESS=1.0 CRT1=2.0e-3 RPSQ=0.03 WMIN=0.5 SMIN=0.5}
+DIELECTRIC passivation {THICKNESS=3.0 ER=3.5}
+
+$$ Contact and via definitions
+$$ Substrate contacts
+VIA pdiff_contact { FROM=pdiff TO=metal1 AREA=0.006 RPV=80.0 }
+VIA ndiff_contact { FROM=ndiff TO=metal1 AREA=0.006 RPV=70.0 }
+
+$$ Gate contact
+VIA poly_contact { FROM=poly_gate TO=metal1 AREA=0.005 RPV=60.0 }
+
+$$ Inter-metal vias
+VIA via1 { FROM=metal1 TO=metal2 AREA=0.012 RPV=12.0 }
+VIA via2 { FROM=metal2 TO=metal3 AREA=0.015 RPV=10.0 }
+VIA via3 { FROM=metal3 TO=top_metal AREA=0.25 RPV=2.0 }

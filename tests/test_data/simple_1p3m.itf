@@ -1,0 +1,91 @@
+$$ Simple 1 Poly + 3 Metal test ITF file - sanitized data
+$$ This is a minimal test case for basic parsing functionality
+
+TECHNOLOGY = test_1p3m_generic
+GLOBAL_TEMPERATURE = 25.0
+REFERENCE_DIRECTION = VERTICAL
+BACKGROUND_ER = 4.0
+
+$$ Bottom dielectric
+DIELECTRIC substrate_oxide {THICKNESS=0.5 ER=3.9}
+
+$$ Poly layer
+CONDUCTOR poly {
+    THICKNESS=0.15
+    CRT1=3.8e-3
+    CRT2=-1.5e-7
+    RPSQ=10.0
+    WMIN=0.08
+    SMIN=0.08
+    SIDE_TANGENT=0.02
+}
+
+$$ Inter-layer dielectric 1
+DIELECTRIC ild1 {THICKNESS=0.8 ER=4.2}
+
+$$ Metal 1
+CONDUCTOR metal1 {
+    THICKNESS=0.3
+    CRT1=2.5e-3
+    CRT2=-4.0e-7
+    RPSQ=0.08
+    WMIN=0.1
+    SMIN=0.1
+    SIDE_TANGENT=0.05
+    RHO_VS_WIDTH_AND_SPACING {
+        WIDTHS   { 0.1 0.2 0.3 0.5 }
+        SPACINGS { 0.1 0.2 0.3 0.5 }
+        VALUES   { 
+            0.085 0.082 0.080 0.078
+            0.083 0.080 0.078 0.076
+            0.081 0.078 0.076 0.074
+            0.080 0.077 0.075 0.073
+        }
+    }
+    ETCH_VS_WIDTH_AND_SPACING {
+        WIDTHS   { 0.1 0.2 0.3 0.5 }
+        SPACINGS { 0.1 0.2 0.3 0.5 }
+        VALUES   {
+            -0.005 -0.004 -0.003 -0.002
+            -0.004 -0.003 -0.002 -0.001
+            -0.003 -0.002 -0.001  0.000
+            -0.002 -0.001  0.000  0.001
+        }
+    }
+}
+
+$$ Inter-layer dielectric 2
+DIELECTRIC ild2 {THICKNESS=0.9 ER=4.2}
+
+$$ Metal 2
+CONDUCTOR metal2 {
+    THICKNESS=0.4
+    CRT1=2.2e-3
+    CRT2=-3.5e-7
+    RPSQ=0.06
+    WMIN=0.12
+    SMIN=0.12
+    SIDE_TANGENT=0.04
+}
+
+$$ Inter-layer dielectric 3
+DIELECTRIC ild3 {THICKNESS=1.0 ER=4.2}
+
+$$ Metal 3 (top metal, thicker)
+CONDUCTOR metal3 {
+    THICKNESS=0.8
+    CRT1=2.0e-3
+    CRT2=-3.0e-7
+    RPSQ=0.04
+    WMIN=0.2
+    SMIN=0.2
+    SIDE_TANGENT=0.03
+}
+
+$$ Top passivation
+DIELECTRIC passivation {THICKNESS=2.0 ER=3.5}
+
+$$ Via connections
+VIA poly_contact { FROM=poly TO=metal1 AREA=0.008 RPV=50.0 }
+VIA via1 { FROM=metal1 TO=metal2 AREA=0.016 RPV=8.0 }
+VIA via2 { FROM=metal2 TO=metal3 AREA=0.025 RPV=5.0 }
