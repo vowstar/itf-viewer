@@ -453,30 +453,53 @@ impl StackRenderer {
         _viewport_rect: Rect,
     ) -> Vec<LayerGeometry> {
         let mut geometries = Vec::new();
-        let center_x = 0.0;
         
-        // Build a map of layer z positions based on the new stacking order
-        let layer_z_positions = self.calculate_ordered_layer_positions(stack, scaler);
+        // Get layer boundaries for precise VIA positioning
+        let layer_boundaries = self.calculate_ordered_layer_boundaries(stack, scaler);
+        
+        // Group VIAs by layer pairs to add horizontal offset for multiple VIAs
+        let mut via_offset_counter: HashMap<(String, String), i32> = HashMap::new();
         
         for via in stack.via_stack.iter() {
-            // Find z positions for FROM and TO layers based on new stacking order
-            let from_z = layer_z_positions.get(&via.from_layer);
-            let to_z = layer_z_positions.get(&via.to_layer);
+            // Find boundary positions for FROM and TO layers
+            let from_bounds = layer_boundaries.get(&via.from_layer);
+            let to_bounds = layer_boundaries.get(&via.to_layer);
             
-            if let (Some(&from_center_z), Some(&to_center_z)) = (from_z, to_z) {
-                let z_bottom = from_center_z.min(to_center_z) - (from_center_z - to_center_z).abs() * 0.1;
-                let z_top = from_center_z.max(to_center_z) + (from_center_z - to_center_z).abs() * 0.1;
-                let via_height = z_top - z_bottom;
-                let via_width = via.get_via_width() as f32 * 50.0; // Scale up for visibility
+            if let (Some(&(from_bottom, from_top)), Some(&(to_bottom, to_top))) = (from_bounds, to_bounds) {
+                // VIA should span from the surface of the FROM layer to the surface of the TO layer
+                let (via_z_start, via_z_end) = if from_bottom < to_bottom {
+                    // FROM layer is below TO layer - VIA goes from top of FROM to bottom of TO
+                    (from_top, to_bottom)
+                } else {
+                    // FROM layer is above TO layer - VIA goes from bottom of FROM to top of TO
+                    (from_bottom, to_top)
+                };
+                
+                let via_height = (via_z_end - via_z_start).abs();
+                let via_width = via.get_via_width() as f32 * 60.0; // Increased scale for better visibility
+                
+                // Calculate horizontal offset for multiple VIAs between same layers
+                let layer_pair = if via.from_layer < via.to_layer {
+                    (via.from_layer.clone(), via.to_layer.clone())
+                } else {
+                    (via.to_layer.clone(), via.from_layer.clone())
+                };
+                
+                let offset_index = *via_offset_counter.entry(layer_pair).or_insert(0);
+                via_offset_counter.entry((via.from_layer.clone(), via.to_layer.clone())).and_modify(|x| *x += 1);
+                
+                // Horizontal offset to prevent VIAs from overlapping
+                let horizontal_offset = (offset_index as f32 - 0.5) * via_width * 1.5;
                 
                 // Convert to screen coordinates
-                let world_center = Pos2::new(center_x, -(z_bottom + via_height * 0.5)); // Flip Y axis
+                let via_center_z = (via_z_start + via_z_end) * 0.5;
+                let world_center = Pos2::new(horizontal_offset, -via_center_z); // Flip Y axis
                 let screen_center = transform.world_to_screen(world_center);
                 let screen_height = via_height * transform.scale;
                 let screen_width = via_width * transform.scale;
                 
                 let via_color = self.color_scheme.get_via_color(via.get_via_type());
-                let stroke = Stroke::new(1.0, Color32::BLACK);
+                let stroke = Stroke::new(2.0, Color32::DARK_GRAY); // Thicker stroke for better visibility
                 
                 let rectangle = RectangleShape::new(
                     screen_center,
@@ -488,8 +511,8 @@ impl StackRenderer {
                 
                 let geometry = LayerGeometry::new_rectangle(
                     via.name.clone(),
-                    z_bottom,
-                    z_top,
+                    via_z_start.min(via_z_end),
+                    via_z_start.max(via_z_end),
                     rectangle,
                 );
                 
@@ -523,6 +546,33 @@ impl StackRenderer {
         }
         
         layer_positions
+    }
+
+    fn calculate_ordered_layer_boundaries(&self, stack: &ProcessStack, scaler: &ThicknessScaler) -> HashMap<String, (f32, f32)> {
+        let mut layer_boundaries = HashMap::new();
+        let mut current_z = 0.0f32;
+        
+        // First, position all DIELECTRIC layers
+        let dielectric_layers = stack.get_dielectric_layers();
+        for dielectric in dielectric_layers {
+            let exaggerated_height = scaler.get_exaggerated_thickness(dielectric.thickness() as f32);
+            let z_bottom = current_z;
+            let z_top = current_z + exaggerated_height;
+            layer_boundaries.insert(dielectric.name().to_string(), (z_bottom, z_top));
+            current_z += exaggerated_height;
+        }
+        
+        // Then, position all CONDUCTOR layers
+        let conductor_layers = stack.get_conductor_layers();
+        for conductor in conductor_layers {
+            let exaggerated_height = scaler.get_exaggerated_thickness(conductor.thickness() as f32);
+            let z_bottom = current_z;
+            let z_top = current_z + exaggerated_height;
+            layer_boundaries.insert(conductor.name().to_string(), (z_bottom, z_top));
+            current_z += exaggerated_height;
+        }
+        
+        layer_boundaries
     }
 
     fn create_dimension_shapes(
@@ -915,13 +965,19 @@ mod tests {
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
         
-        // Get layer positions
-        let layer_positions = renderer.calculate_ordered_layer_positions(&stack, &scaler);
+        // Get layer boundaries for precise testing
+        let layer_boundaries = renderer.calculate_ordered_layer_boundaries(&stack, &scaler);
         
-        // Metal1 should be positioned before metal2 in the new stacking order
-        let metal1_pos = layer_positions.get("metal1").unwrap();
-        let metal2_pos = layer_positions.get("metal2").unwrap();
-        assert!(metal2_pos > metal1_pos, "Metal2 should be above Metal1 in new stacking order");
+        // In new stacking order: oxide1, oxide2 (dielectrics first), then metal1, metal2 (conductors)
+        let oxide1_bounds = layer_boundaries.get("oxide1").unwrap();
+        let oxide2_bounds = layer_boundaries.get("oxide2").unwrap();
+        let metal1_bounds = layer_boundaries.get("metal1").unwrap();
+        let metal2_bounds = layer_boundaries.get("metal2").unwrap();
+        
+        // Verify the new stacking order
+        assert!(oxide2_bounds.0 >= oxide1_bounds.1, "oxide2 should be above oxide1 (dielectrics first)");
+        assert!(metal1_bounds.0 >= oxide2_bounds.1, "metal1 should be above all dielectrics");
+        assert!(metal2_bounds.0 >= metal1_bounds.1, "metal2 should be above metal1");
         
         // Create via geometries
         let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
@@ -931,10 +987,15 @@ mod tests {
         let via_geom = &via_geometries[0];
         assert_eq!(via_geom.layer_name, "via12");
         
-        // Via should be positioned to connect the metal layers
-        assert!(via_geom.z_bottom <= *metal1_pos && via_geom.z_top >= *metal2_pos,
-               "Via should span from metal1 ({}) to metal2 ({}), but spans {}-{}",
-               metal1_pos, metal2_pos, via_geom.z_bottom, via_geom.z_top);
+        // Via should be positioned to connect the layer surfaces (not centers)
+        // It should span from top of metal1 to bottom of metal2
+        let expected_start = metal1_bounds.1; // Top of metal1
+        let expected_end = metal2_bounds.0;   // Bottom of metal2
+        
+        assert!((via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6,
+               "Via should start at {}, but starts at {}", expected_start.min(expected_end), via_geom.z_bottom);
+        assert!((via_geom.z_top - expected_start.max(expected_end)).abs() < 1e-6,
+               "Via should end at {}, but ends at {}", expected_start.max(expected_end), via_geom.z_top);
     }
 
     #[test]
@@ -1064,6 +1125,106 @@ mod tests {
         // Should generate only 1 shape for rectangle
         let shapes = conductor_geometry.to_egui_shapes();
         assert_eq!(shapes.len(), 1);
+    }
+
+    #[test]
+    fn test_improved_via_positioning() {
+        let renderer = StackRenderer::new();
+        
+        // Create stack with layers and VIAs
+        let tech = TechnologyInfo::new("test_via_improved".to_string());
+        let mut stack = ProcessStack::new(tech);
+        
+        // Add layers in order: substrate, metal1, oxide, metal2
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new("substrate".to_string(), 1.0, 11.7)));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 0.8, 4.2)));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.3))));
+        
+        // Add VIA connecting metal1 to metal2
+        use crate::data::ViaConnection;
+        let via = ViaConnection::new("via_m1_m2".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        stack.add_via(via);
+        
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+        
+        // Get layer boundaries
+        let layer_boundaries = renderer.calculate_ordered_layer_boundaries(&stack, &scaler);
+        
+        // In new stacking order: substrate, oxide (dielectrics first), then metal1, metal2 (conductors)
+        let substrate_bounds = layer_boundaries.get("substrate").unwrap();
+        let oxide_bounds = layer_boundaries.get("oxide").unwrap();
+        let metal1_bounds = layer_boundaries.get("metal1").unwrap();
+        let metal2_bounds = layer_boundaries.get("metal2").unwrap();
+        
+        // Verify layer ordering: dielectrics first, then conductors
+        assert!(substrate_bounds.1 <= oxide_bounds.0); // substrate top <= oxide bottom
+        assert!(oxide_bounds.1 <= metal1_bounds.0); // oxide top <= metal1 bottom
+        assert!(metal1_bounds.1 <= metal2_bounds.0); // metal1 top <= metal2 bottom
+        
+        // Create VIA geometries
+        let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+        assert_eq!(via_geometries.len(), 1);
+        
+        let via_geom = &via_geometries[0];
+        
+        // VIA should span from the top surface of metal1 to the bottom surface of metal2
+        // Since there's oxide between them, VIA should go: metal1_top -> oxide -> metal2_bottom
+        let expected_via_start = metal1_bounds.1; // Top of metal1
+        let expected_via_end = metal2_bounds.0;   // Bottom of metal2
+        
+        assert!((via_geom.z_bottom - expected_via_start.min(expected_via_end)).abs() < 1e-6);
+        assert!((via_geom.z_top - expected_via_start.max(expected_via_end)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_multiple_vias_horizontal_offset() {
+        let renderer = StackRenderer::new();
+        
+        // Create stack with two layers
+        let tech = TechnologyInfo::new("test_multi_via".to_string());
+        let mut stack = ProcessStack::new(tech);
+        
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.3))));
+        
+        // Add multiple VIAs between the same layers
+        use crate::data::ViaConnection;
+        let via1 = ViaConnection::new("via1".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        let via2 = ViaConnection::new("via2".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        let via3 = ViaConnection::new("via3".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        
+        stack.add_via(via1);
+        stack.add_via(via2);
+        stack.add_via(via3);
+        
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+        
+        // Create VIA geometries
+        let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+        assert_eq!(via_geometries.len(), 3);
+        
+        // VIAs should have different horizontal positions (to avoid overlap)
+        let bounds_via1 = via_geometries[0].get_bounds();
+        let bounds_via2 = via_geometries[1].get_bounds();
+        let bounds_via3 = via_geometries[2].get_bounds();
+        
+        // Check that VIAs don't significantly overlap horizontally
+        assert!(bounds_via1.center().x != bounds_via2.center().x);
+        assert!(bounds_via2.center().x != bounds_via3.center().x);
+        assert!(bounds_via1.center().x != bounds_via3.center().x);
+        
+        // All VIAs should have the same vertical span (same layer connection)
+        assert!((bounds_via1.height() - bounds_via2.height()).abs() < 1e-6);
+        assert!((bounds_via2.height() - bounds_via3.height()).abs() < 1e-6);
     }
 
     #[test]
