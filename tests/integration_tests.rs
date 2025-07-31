@@ -6,7 +6,7 @@ use std::fs;
 
 #[test]
 fn test_full_parsing_workflow() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     // Test the full parsing workflow
@@ -36,7 +36,7 @@ fn test_full_parsing_workflow() {
 
 #[test]
 fn test_complex_stack_parsing() {
-    let content = fs::read_to_string("tests/test_data/via_connections.itf")
+    let content = fs::read_to_string("tests/data/via_connections.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse complex ITF file");
@@ -62,7 +62,7 @@ fn test_complex_stack_parsing() {
 
 #[test]
 fn test_dielectric_only_parsing() {
-    let content = fs::read_to_string("tests/test_data/basic_dielectric.itf")
+    let content = fs::read_to_string("tests/data/basic_dielectric.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse dielectric-only ITF");
@@ -83,7 +83,7 @@ fn test_dielectric_only_parsing() {
 
 #[test]
 fn test_layer_positioning() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -112,7 +112,7 @@ fn test_layer_positioning() {
 
 #[test]
 fn test_via_positioning() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -143,7 +143,7 @@ fn test_via_positioning() {
 
 #[test]
 fn test_electrical_property_extraction() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -173,7 +173,7 @@ fn test_electrical_property_extraction() {
 
 #[test]
 fn test_physical_property_extraction() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -200,7 +200,7 @@ fn test_physical_property_extraction() {
 
 #[test]
 fn test_layer_filtering() {
-    let content = fs::read_to_string("tests/test_data/via_connections.itf")
+    let content = fs::read_to_string("tests/data/via_connections.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -273,7 +273,7 @@ fn test_library_functions() {
 #[test]
 fn test_file_parsing_from_path() {
     // Test parsing from file path
-    let stack = parse_itf_from_file("tests/test_data/simple_1p3m.itf")
+    let stack = parse_itf_from_file("tests/data/simple_1p3m.itf")
         .expect("Failed to parse from file path");
     
     assert_eq!(stack.technology_info.name, "test_1p3m_generic");
@@ -286,7 +286,7 @@ fn test_file_parsing_from_path() {
 
 #[test]
 fn test_process_summary_consistency() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
@@ -312,7 +312,7 @@ mod renderer_tests {
         let scheme = ColorScheme::new();
         
         // Test dielectric colors
-        let content = std::fs::read_to_string("tests/test_data/basic_dielectric.itf")
+        let content = std::fs::read_to_string("tests/data/basic_dielectric.itf")
             .expect("Failed to read test file");
         let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
         
@@ -385,7 +385,7 @@ mod renderer_tests {
 
     #[test]
     fn test_stack_renderer() {
-        let content = std::fs::read_to_string("tests/test_data/simple_1p3m.itf")
+        let content = std::fs::read_to_string("tests/data/simple_1p3m.itf")
             .expect("Failed to read test file");
         let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
         
@@ -405,24 +405,24 @@ mod renderer_tests {
 #[test]
 fn test_all_test_files_parse() {
     let test_files = [
-        "tests/test_data/simple_1p3m.itf",
-        "tests/test_data/basic_dielectric.itf", 
-        "tests/test_data/via_connections.itf",
+        "tests/data/simple_1p3m.itf",
+        "tests/data/basic_dielectric.itf", 
+        "tests/data/via_connections.itf",
     ];
     
     for file_path in &test_files {
         let content = fs::read_to_string(file_path)
-            .unwrap_or_else(|_| panic!("Failed to read {}", file_path));
+            .unwrap_or_else(|_| panic!("Failed to read {file_path}"));
         
         let stack = parse_itf_file(&content)
-            .unwrap_or_else(|e| panic!("Failed to parse {}: {}", file_path, e));
+            .unwrap_or_else(|e| panic!("Failed to parse {file_path}: {e}"));
         
         // Basic validation
-        assert!(stack.validate_stack().is_ok(), "Stack validation failed for {}", file_path);
-        assert!(stack.get_layer_count() > 0, "No layers found in {}", file_path);
+        assert!(stack.validate_stack().is_ok(), "Stack validation failed for {file_path}");
+        assert!(stack.get_layer_count() > 0, "No layers found in {file_path}");
         
         let summary = stack.get_process_summary();
-        assert!(!summary.technology_name.is_empty(), "Empty technology name in {}", file_path);
-        assert!(summary.total_height > 0.0, "Invalid total height in {}", file_path);
+        assert!(!summary.technology_name.is_empty(), "Empty technology name in {file_path}");
+        assert!(summary.total_height > 0.0, "Invalid total height in {file_path}");
     }
 }

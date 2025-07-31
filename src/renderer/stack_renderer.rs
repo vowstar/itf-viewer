@@ -329,6 +329,18 @@ impl Default for StackRenderer {
     }
 }
 
+impl Clone for StackRenderer {
+    fn clone(&self) -> Self {
+        Self {
+            color_scheme: ColorScheme::new(), // Create new color scheme
+            layer_width: self.layer_width,
+            show_dimensions: self.show_dimensions,
+            show_layer_names: self.show_layer_names,
+            selected_layer: self.selected_layer.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,17 +491,5 @@ mod tests {
         // Empty stack should produce no layer shapes
         assert!(shapes.is_empty() || shapes.len() <= 2); // Maybe just background/border
         assert!(bounds.width() <= 0.0 || bounds.height() <= 0.0);
-    }
-}
-
-impl Clone for StackRenderer {
-    fn clone(&self) -> Self {
-        Self {
-            color_scheme: ColorScheme::new(), // Create new color scheme
-            layer_width: self.layer_width,
-            show_dimensions: self.show_dimensions,
-            show_layer_names: self.show_layer_names,
-            selected_layer: self.selected_layer.clone(),
-        }
     }
 }

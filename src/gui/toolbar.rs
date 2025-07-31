@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(action, cloned_action);
         
         // Test Debug formatting (should not panic)
-        let debug_str = format!("{:?}", action);
+        let debug_str = format!("{action:?}");
         assert!(debug_str.contains("SetLayerWidth"));
         assert!(debug_str.contains("250"));
     }

@@ -4,7 +4,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until, take_while1},
-    character::complete::{char, digit1, multispace0, multispace1},
+    character::complete::{char, digit1, multispace0},
     combinator::{map, opt, recognize, value},
     multi::{separated_list0, separated_list1},
     number::complete::double,

@@ -329,17 +329,7 @@ impl Default for LayerPanel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{TechnologyInfo, DielectricLayer, ConductorLayer};
 
-    fn create_test_stack() -> ProcessStack {
-        let tech = TechnologyInfo::new("test_stack".to_string());
-        let mut stack = ProcessStack::new(tech);
-        
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        
-        stack
-    }
 
     #[test]
     fn test_layer_panel_creation() {

@@ -178,9 +178,9 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_test_itf_file(dir: &TempDir, name: &str, content: &str) -> PathBuf {
-        let file_path = dir.path().join(format!("{}.itf", name));
+        let file_path = dir.path().join(format!("{name}.itf"));
         let mut file = File::create(&file_path).unwrap();
-        write!(file, "{}", content).unwrap();
+        write!(file, "{content}").unwrap();
         file_path
     }
 

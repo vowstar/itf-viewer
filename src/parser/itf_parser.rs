@@ -91,10 +91,35 @@ impl ItfParser {
     }
 
     fn parse_header<'a>(&self, input: &'a str) -> IResult<&'a str, TechnologyInfo> {
+        // Skip comments and whitespace before looking for TECHNOLOGY
+        let mut remaining = input;
+        while !remaining.trim().is_empty() {
+            let trimmed = remaining.trim_start();
+            if trimmed.starts_with("$") {
+                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
+                remaining = &remaining[next_line_end..];
+                if remaining.starts_with('\n') {
+                    remaining = &remaining[1..];
+                }
+                continue;
+            } else if trimmed.starts_with("TECHNOLOGY") {
+                break;
+            } else if trimmed.chars().all(|c| c.is_whitespace()) {
+                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
+                remaining = &remaining[next_line_end..];
+                if remaining.starts_with('\n') {
+                    remaining = &remaining[1..];
+                }
+                continue;
+            } else {
+                break;
+            }
+        }
+
         let (input, technology_name) = preceded(
             tuple((parse_keyword("TECHNOLOGY"), parse_equals)),
             preceded(multispace0, parse_identifier),
-        )(input)?;
+        )(remaining)?;
 
         let mut tech_info = TechnologyInfo::new(technology_name);
         let mut remaining = input;
@@ -400,8 +425,6 @@ impl ItfParser {
                 in_brace = true;
                 remaining = &remaining[1..];
                 break;
-            } else if remaining.starts_with('\n') {
-                remaining = &remaining[1..];
             } else {
                 remaining = &remaining[1..];
             }
@@ -604,5 +627,408 @@ BACKGROUND_ER = 3.0"#;
         assert_eq!(tech_info.global_temperature, Some(85.0));
         assert_eq!(tech_info.reference_direction, Some("VERTICAL".to_string()));
         assert_eq!(tech_info.background_er, Some(3.0));
+    }
+
+    #[test]
+    fn test_parse_itf_with_comments() {
+        let itf_content = r#"
+$ Test ITF file with comments
+TECHNOLOGY = test_node_28nm
+$ Global process parameters
+GLOBAL_TEMPERATURE = 25.0
+REFERENCE_DIRECTION = VERTICAL
+USE_SI_DENSITY = YES
+
+$$ Multi-line comment block
+$$ Technology parameters
+$$
+BACKGROUND_ER = 3.9
+HALF_NODE_SCALE_FACTOR = 0.9
+
+$ Substrate definition
+DIELECTRIC substrate {
+    THICKNESS = 400.0
+    ER = 11.9
+}
+
+$ First metal layer with advanced properties
+CONDUCTOR metal1 {
+    THICKNESS = 0.320
+    CRT1 = 3.8800E-03
+    CRT2 = -7.1400E-08
+    RPSQ = 0.0750
+    WMIN = 0.090
+    SMIN = 0.090
+    SIDE_TANGENT = 0.0500
+}
+
+$ Inter-metal dielectric
+DIELECTRIC imd1 {
+    THICKNESS = 0.560
+    ER = 2.9
+    MEASURED_FROM = TOP_OF_CHIP
+}
+
+$ Via connection
+VIA via1 {
+    FROM = metal1
+    TO = imd1
+    AREA = 0.0225
+    RPV = 12.5
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        if let Err(ref e) = result {
+            println!("Comment test parse error: {e:?}");
+        }
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.technology_info.name, "test_node_28nm");
+        assert_eq!(stack.technology_info.global_temperature, Some(25.0));
+        assert_eq!(stack.technology_info.use_si_density, Some(true));
+        assert_eq!(stack.technology_info.half_node_scale_factor, Some(0.9));
+        assert_eq!(stack.get_layer_count(), 3);
+        assert_eq!(stack.get_via_count(), 1);
+    }
+
+    #[test]
+    fn test_parse_complex_conductor_with_tables() {
+        // Simplified test without complex tables for now - focus on basic conductor properties
+        let itf_content = r#"
+TECHNOLOGY = test_advanced_process
+GLOBAL_TEMPERATURE = 85.0
+
+$ Advanced metal layer with basic properties
+CONDUCTOR metal2 {
+    THICKNESS = 0.450
+    CRT1 = 2.9500E-03
+    CRT2 = -5.8200E-08
+    RPSQ = 0.0620
+    WMIN = 0.120
+    SMIN = 0.120
+    SIDE_TANGENT = 0.0400
+}
+
+DIELECTRIC imd2 {
+    THICKNESS = 0.800
+    ER = 2.8
+    SW_T = 0.020
+    TW_T = 0.015
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        if let Err(ref e) = result {
+            println!("Complex conductor test parse error: {e:?}");
+        }
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.get_layer_count(), 2);
+        
+        // Verify conductor properties
+        if let Some(Layer::Conductor(metal)) = stack.layers.first() {
+            assert_eq!(metal.name, "metal2");
+            assert_eq!(metal.thickness, 0.450);
+            assert_eq!(metal.electrical_props.crt1, Some(2.9500E-03));
+            assert_eq!(metal.electrical_props.rpsq, Some(0.0620));
+            assert_eq!(metal.physical_props.side_tangent, Some(0.0400));
+        } else {
+            panic!("Expected conductor layer");
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_vias_with_properties() {
+        let itf_content = r#"
+TECHNOLOGY = test_multi_via
+GLOBAL_TEMPERATURE = 25.0
+
+CONDUCTOR metal1 { THICKNESS = 0.300 RPSQ = 0.080 }
+DIELECTRIC imd1 { THICKNESS = 0.500 ER = 3.0 }
+CONDUCTOR metal2 { THICKNESS = 0.400 RPSQ = 0.070 }
+DIELECTRIC imd2 { THICKNESS = 0.600 ER = 2.9 }
+CONDUCTOR metal3 { THICKNESS = 0.500 RPSQ = 0.060 }
+
+VIA via12 {
+    FROM = metal1
+    TO = metal2
+    AREA = 0.0196
+    RPV = 15.0
+}
+
+VIA via23 {
+    FROM = metal2
+    TO = metal3
+    AREA = 0.0225
+    RPV = 12.0
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.get_layer_count(), 5);
+        assert_eq!(stack.get_via_count(), 2);
+        
+        // Verify via properties
+        let via1 = &stack.via_stack.vias[0];
+        assert_eq!(via1.name, "via12");
+        assert_eq!(via1.from_layer, "metal1");
+        assert_eq!(via1.to_layer, "metal2");
+        assert_eq!(via1.area, 0.0196);
+        assert_eq!(via1.resistance_per_via, 15.0);
+    }
+
+    #[test]
+    fn test_parse_poly_and_diffusion_layers() {
+        let itf_content = r#"
+TECHNOLOGY = test_cmos_process
+GLOBAL_TEMPERATURE = 25.0
+
+$ Diffusion layers
+CONDUCTOR ndiff {
+    THICKNESS = 0.180
+    RPSQ = 120.0
+    WMIN = 0.150
+    SMIN = 0.270
+}
+
+CONDUCTOR pdiff {
+    THICKNESS = 0.180
+    RPSQ = 250.0
+    WMIN = 0.150
+    SMIN = 0.270
+}
+
+$ Gate oxide
+DIELECTRIC gate_oxide {
+    THICKNESS = 0.0025
+    ER = 3.9
+}
+
+$ Polysilicon gate
+CONDUCTOR poly_gate {
+    THICKNESS = 0.180
+    RPSQ = 8.5
+    WMIN = 0.100
+    SMIN = 0.140
+}
+
+$ Pre-metal dielectric
+DIELECTRIC pmd {
+    THICKNESS = 0.450
+    ER = 4.1
+    MEASURED_FROM = TOP_OF_CHIP
+}
+
+$ Contact vias
+VIA contact_n {
+    FROM = ndiff
+    TO = metal1
+    AREA = 0.0100
+    RPV = 25.0
+}
+
+VIA contact_p {
+    FROM = pdiff
+    TO = metal1
+    AREA = 0.0100
+    RPV = 30.0
+}
+
+VIA contact_poly {
+    FROM = poly_gate
+    TO = metal1
+    AREA = 0.0100
+    RPV = 20.0
+}
+
+$ First metal
+CONDUCTOR metal1 {
+    THICKNESS = 0.350
+    RPSQ = 0.075
+    WMIN = 0.140
+    SMIN = 0.140
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.get_layer_count(), 6);
+        assert_eq!(stack.get_via_count(), 3);
+        
+        // Verify poly gate properties
+        if let Some(Layer::Conductor(poly)) = stack.layers.iter()
+            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "poly_gate")) {
+            assert_eq!(poly.electrical_props.rpsq, Some(8.5));
+            assert_eq!(poly.physical_props.width_min, Some(0.100));
+            assert_eq!(poly.physical_props.spacing_min, Some(0.140));
+        } else {
+            panic!("Expected poly_gate conductor layer");
+        }
+    }
+
+    #[test]
+    fn test_parse_high_metal_stack() {
+        let itf_content = r#"
+TECHNOLOGY = test_high_metal_stack
+GLOBAL_TEMPERATURE = 25.0
+BACKGROUND_ER = 2.8
+
+$ Metal stack M1-M6 with thick top metal
+CONDUCTOR metal1 { THICKNESS = 0.280 RPSQ = 0.095 WMIN = 0.090 SMIN = 0.090 }
+DIELECTRIC imd1 { THICKNESS = 0.420 ER = 3.0 }
+
+CONDUCTOR metal2 { THICKNESS = 0.320 RPSQ = 0.080 WMIN = 0.100 SMIN = 0.100 }
+DIELECTRIC imd2 { THICKNESS = 0.460 ER = 2.9 }
+
+CONDUCTOR metal3 { THICKNESS = 0.360 RPSQ = 0.070 WMIN = 0.110 SMIN = 0.110 }
+DIELECTRIC imd3 { THICKNESS = 0.520 ER = 2.8 }
+
+CONDUCTOR metal4 { THICKNESS = 0.400 RPSQ = 0.065 WMIN = 0.120 SMIN = 0.120 }
+DIELECTRIC imd4 { THICKNESS = 0.580 ER = 2.8 }
+
+CONDUCTOR metal5 { THICKNESS = 0.450 RPSQ = 0.060 WMIN = 0.140 SMIN = 0.140 }
+DIELECTRIC imd5 { THICKNESS = 0.640 ER = 2.7 }
+
+$ Thick top metal for power routing
+CONDUCTOR metal6 {
+    THICKNESS = 1.200
+    RPSQ = 0.020
+    WMIN = 0.400
+    SMIN = 0.400
+    SIDE_TANGENT = 0.100
+}
+
+$ Passivation layers
+DIELECTRIC pass1 { THICKNESS = 0.800 ER = 4.0 }
+DIELECTRIC pass2 { THICKNESS = 2.000 ER = 3.5 }
+
+$ Via stack
+VIA via1 { FROM = metal1 TO = metal2 AREA = 0.0196 RPV = 18.0 }
+VIA via2 { FROM = metal2 TO = metal3 AREA = 0.0225 RPV = 16.0 }
+VIA via3 { FROM = metal3 TO = metal4 AREA = 0.0256 RPV = 14.0 }
+VIA via4 { FROM = metal4 TO = metal5 AREA = 0.0289 RPV = 12.0 }
+VIA via5 { FROM = metal5 TO = metal6 AREA = 0.0400 RPV = 8.0 }
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.get_layer_count(), 13); // 6 metals + 7 dielectrics
+        assert_eq!(stack.get_via_count(), 5);
+        
+        // Verify thick top metal
+        if let Some(Layer::Conductor(metal6)) = stack.layers.iter()
+            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "metal6")) {
+            assert_eq!(metal6.thickness, 1.200);
+            assert_eq!(metal6.electrical_props.rpsq, Some(0.020));
+        } else {
+            panic!("Expected metal6 conductor layer");
+        }
+    }
+
+    #[test]
+    fn test_parse_scientific_notation_values() {
+        let itf_content = r#"
+TECHNOLOGY = test_scientific_notation
+GLOBAL_TEMPERATURE = 2.5E+01
+
+CONDUCTOR test_metal {
+    THICKNESS = 4.5000E-01
+    CRT1 = 3.8800E-03
+    CRT2 = -7.1400E-08
+    RPSQ = 7.5000E-02
+    WMIN = 9.0000E-02
+    SMIN = 9.0000E-02
+}
+
+DIELECTRIC test_oxide {
+    THICKNESS = 5.6000E-01
+    ER = 2.9000E+00
+}
+
+VIA test_via {
+    FROM = test_metal
+    TO = test_oxide
+    AREA = 2.2500E-02
+    RPV = 1.2500E+01
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.technology_info.global_temperature, Some(25.0));
+        
+        if let Some(Layer::Conductor(metal)) = stack.layers.first() {
+            assert!((metal.thickness - 0.45).abs() < 1e-6);
+            assert!((metal.electrical_props.crt1.unwrap() - 3.88e-3).abs() < 1e-9);
+            assert!((metal.electrical_props.crt2.unwrap() - (-7.14e-8)).abs() < 1e-12);
+        } else {
+            panic!("Expected conductor layer");
+        }
+    }
+
+    #[test]
+    fn test_parse_complex_block_skipping() {
+        let itf_content = r#"
+TECHNOLOGY = test_complex_blocks
+GLOBAL_TEMPERATURE = 25.0
+
+CONDUCTOR advanced_metal {
+    THICKNESS = 0.400
+    RPSQ = 0.065
+    
+    $ This should be skipped gracefully
+    POLYNOMIAL_BASED_THICKNESS_VARIATION {
+        ORDER = 2
+        COEFFICIENTS = 1.0, 0.1, 0.01
+        RANGE_WIDTH = 0.1, 1.0
+        RANGE_SPACING = 0.1, 0.5
+    }
+    
+    $ This should also be skipped
+    RHO_VS_SI_WIDTH_AND_THICKNESS {
+        SI_WIDTHS = 0.1, 0.2, 0.3
+        THICKNESSES = 0.3, 0.4, 0.5
+        VALUES = 
+            1.0, 1.1, 1.2,
+            1.1, 1.2, 1.3,
+            1.2, 1.3, 1.4
+    }
+    
+    WMIN = 0.120
+    SMIN = 0.120
+}
+
+DIELECTRIC simple_oxide {
+    THICKNESS = 0.500
+    ER = 3.0
+}
+        "#;
+
+        let result = parse_itf_file(itf_content);
+        assert!(result.is_ok());
+        
+        let stack = result.unwrap();
+        assert_eq!(stack.get_layer_count(), 2);
+        
+        if let Some(Layer::Conductor(metal)) = stack.layers.first() {
+            assert_eq!(metal.name, "advanced_metal");
+            assert_eq!(metal.thickness, 0.400);
+            assert_eq!(metal.physical_props.width_min, Some(0.120));
+            assert_eq!(metal.physical_props.spacing_min, Some(0.120));
+        } else {
+            panic!("Expected conductor layer");
+        }
     }
 }

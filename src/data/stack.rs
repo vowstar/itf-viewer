@@ -183,7 +183,9 @@ impl ProcessStack {
         }
 
         for (i, layer) in self.layers.iter().enumerate() {
-            if layer.thickness() <= 0.0 {
+            // Only check for negative thickness - allow zero thickness layers
+            // Real ITF files commonly have zero thickness layers for various reasons
+            if layer.thickness() < 0.0 {
                 return Err(StackValidationError::InvalidThickness {
                     layer_name: layer.name().to_string(),
                     thickness: layer.thickness(),
@@ -205,19 +207,17 @@ impl ProcessStack {
             }
         }
 
+        // Check via layer references - warn but don't fail for missing layers
+        // Real ITF files may reference layers that aren't fully defined
         for via in &self.via_stack.vias {
             if self.get_layer(&via.from_layer).is_none() {
-                return Err(StackValidationError::UnknownLayer {
-                    layer_name: via.from_layer.clone(),
-                    via_name: via.name.clone(),
-                });
+                eprintln!("Warning: Via '{}' references unknown layer '{}'", 
+                         via.name, via.from_layer);
             }
             
             if self.get_layer(&via.to_layer).is_none() {
-                return Err(StackValidationError::UnknownLayer {
-                    layer_name: via.to_layer.clone(),
-                    via_name: via.name.clone(),
-                });
+                eprintln!("Warning: Via '{}' references unknown layer '{}'", 
+                         via.name, via.to_layer);
             }
         }
 

@@ -1,0 +1,51 @@
+TECHNOLOGY = generic_1p3m
+GLOBAL_TEMPERATURE = 25.0
+REFERENCE_DIRECTION = VERTICAL
+
+$ Basic substrate
+DIELECTRIC substrate {THICKNESS=1.0 ER=11.9}
+
+$ Gate oxide and polysilicon
+DIELECTRIC gate_oxide {THICKNESS=0.01 ER=3.9}
+CONDUCTOR poly {CRT1=2.5E-03 CRT2=0.0 THICKNESS=0.2 WMIN=0.1 SMIN=0.1 RPSQ=15.0}
+
+$ First interlayer dielectric
+DIELECTRIC ild1 {THICKNESS=0.8 ER=4.2}
+
+$ First metal layer
+CONDUCTOR metal1 {CRT1=2.5E-03 CRT2=-4.38E-07 THICKNESS=0.3 WMIN=0.08 SMIN=0.08 RPSQ=0.02 
+    RHO_VS_WIDTH_AND_SPACING {
+        WIDTHS   {0.08 0.16 0.24 0.40}
+        SPACINGS {0.08 0.12 0.16 0.24}
+        VALUES   {0.035 0.030 0.025 0.022
+                  0.028 0.026 0.024 0.023
+                  0.025 0.024 0.023 0.022
+                  0.021 0.021 0.020 0.020}
+    }
+    ETCH_VS_WIDTH_AND_SPACING {
+        WIDTHS   {0.08 0.16 0.24 0.40}
+        SPACINGS {0.08 0.12 0.16 0.24}
+        VALUES   {-0.005 -0.006 -0.004 -0.003
+                  -0.004 -0.005 -0.003 -0.002
+                  -0.003 -0.004 -0.002 -0.002
+                  -0.002 -0.002 -0.001 -0.001}
+    }
+    SIDE_TANGENT=0.05
+}
+
+$ Second interlayer dielectric
+DIELECTRIC ild2 {THICKNESS=1.2 ER=4.2}
+
+$ Second metal layer
+CONDUCTOR metal2 {CRT1=3.0E-03 CRT2=1.2E-07 THICKNESS=0.4 WMIN=0.1 SMIN=0.1 RPSQ=0.015}
+
+$ Third interlayer dielectric
+DIELECTRIC ild3 {THICKNESS=1.5 ER=4.2}
+
+$ Top metal layer
+CONDUCTOR metal3 {CRT1=3.5E-03 CRT2=1.5E-07 THICKNESS=0.6 WMIN=0.15 SMIN=0.15 RPSQ=0.01}
+
+$ Via connections
+VIA contact_poly {FROM=poly TO=metal1 AREA=0.01 RPV=50.0}
+VIA via12 {FROM=metal1 TO=metal2 AREA=0.04 RPV=5.0}
+VIA via23 {FROM=metal2 TO=metal3 AREA=0.06 RPV=3.0}

@@ -7,7 +7,7 @@ use std::fs;
 
 #[test]
 fn test_parse_simple_1p3m() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let result = parse_itf_file(&content);
@@ -48,7 +48,7 @@ fn test_parse_simple_1p3m() {
 
 #[test]
 fn test_parse_basic_dielectric() {
-    let content = fs::read_to_string("tests/test_data/basic_dielectric.itf")
+    let content = fs::read_to_string("tests/data/basic_dielectric.itf")
         .expect("Failed to read test file");
     
     let result = parse_itf_file(&content);
@@ -89,7 +89,7 @@ fn test_parse_basic_dielectric() {
 
 #[test]
 fn test_parse_via_connections() {
-    let content = fs::read_to_string("tests/test_data/via_connections.itf")
+    let content = fs::read_to_string("tests/data/via_connections.itf")
         .expect("Failed to read test file");
     
     let result = parse_itf_file(&content);
@@ -124,7 +124,7 @@ fn test_parse_via_connections() {
 
 #[test]
 fn test_stack_validation() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let result = parse_itf_file(&content);
@@ -146,7 +146,7 @@ fn test_stack_validation() {
 
 #[test]
 fn test_process_summary() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).unwrap();
@@ -164,7 +164,7 @@ fn test_process_summary() {
 
 #[test]
 fn test_layer_filtering() {
-    let content = fs::read_to_string("tests/test_data/via_connections.itf")
+    let content = fs::read_to_string("tests/data/via_connections.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).unwrap();
@@ -190,7 +190,7 @@ fn test_layer_filtering() {
 
 #[test]
 fn test_conductor_properties() {
-    let content = fs::read_to_string("tests/test_data/simple_1p3m.itf")
+    let content = fs::read_to_string("tests/data/simple_1p3m.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).unwrap();
@@ -222,7 +222,7 @@ fn test_conductor_properties() {
 
 #[test]
 fn test_via_properties() {
-    let content = fs::read_to_string("tests/test_data/via_connections.itf")
+    let content = fs::read_to_string("tests/data/via_connections.itf")
         .expect("Failed to read test file");
     
     let stack = parse_itf_file(&content).unwrap();
@@ -252,6 +252,84 @@ fn test_via_properties() {
         assert_eq!(via.calculate_resistance(2), via.resistance_per_via / 2.0);
         assert_eq!(via.calculate_resistance(0), f64::INFINITY);
     }
+}
+
+#[test]
+fn test_parse_generic_simple() {
+    let content = fs::read_to_string("tests/data/simple_stack.itf")
+        .expect("Failed to read simple stack test file");
+    
+    let result = parse_itf_file(&content);
+    assert!(result.is_ok(), "Failed to parse simple stack test: {:?}", result.err());
+    
+    let stack = result.unwrap();
+    
+    // Test technology info
+    assert_eq!(stack.technology_info.name, "generic_1p3m");
+    assert_eq!(stack.technology_info.global_temperature, Some(25.0));
+    assert_eq!(stack.technology_info.reference_direction, Some("VERTICAL".to_string()));
+    
+    // Test layer structure
+    assert!(stack.get_layer_count() >= 7);
+    assert!(stack.get_conductor_count() >= 4); // poly + 3 metals
+    assert!(stack.get_dielectric_count() >= 3);
+    
+    // Test via connections
+    assert_eq!(stack.get_via_count(), 3);
+    
+    // Test specific layers exist
+    assert!(stack.get_layer("poly").is_some());
+    assert!(stack.get_layer("metal1").is_some());
+    assert!(stack.get_layer("metal2").is_some());
+    assert!(stack.get_layer("metal3").is_some());
+}
+
+#[test]
+fn test_parse_generic_complex() {
+    let content = fs::read_to_string("tests/data/complex_stack.itf")
+        .expect("Failed to read complex stack test file");
+    
+    let result = parse_itf_file(&content);
+    assert!(result.is_ok(), "Failed to parse complex stack test: {:?}", result.err());
+    
+    let stack = result.unwrap();
+    
+    // Test technology info
+    assert_eq!(stack.technology_info.name, "generic_complex");
+    assert_eq!(stack.technology_info.global_temperature, Some(85.0));
+    assert_eq!(stack.technology_info.reference_direction, Some("VERTICAL".to_string()));
+    assert_eq!(stack.technology_info.background_er, Some(1.0));
+    
+    // Test complex layer structure
+    assert!(stack.get_layer_count() > 10);
+    assert!(stack.get_conductor_count() >= 6);
+    assert!(stack.get_dielectric_count() >= 8);
+    
+    // Test via connections
+    assert_eq!(stack.get_via_count(), 7);
+    
+    // Test that key layers exist
+    assert!(stack.get_layer("m1").is_some());
+    assert!(stack.get_layer("m2").is_some());
+    assert!(stack.get_layer("m3").is_some());
+}
+
+#[test]
+fn test_parse_generic_minimal() {
+    let content = fs::read_to_string("tests/data/minimal.itf")
+        .expect("Failed to read minimal test file");
+    
+    let result = parse_itf_file(&content);
+    assert!(result.is_ok(), "Failed to parse minimal test: {:?}", result.err());
+    
+    let stack = result.unwrap();
+    
+    // Test minimal structure
+    assert_eq!(stack.technology_info.name, "test_minimal");
+    assert_eq!(stack.get_layer_count(), 3);
+    assert_eq!(stack.get_conductor_count(), 1);
+    assert_eq!(stack.get_dielectric_count(), 2);
+    assert_eq!(stack.get_via_count(), 0);
 }
 
 #[test] 

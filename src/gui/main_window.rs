@@ -252,13 +252,13 @@ impl MainWindow {
                         self.load_stack(stack);
                     }
                     Err(e) => {
-                        println!("Parse error: {}", e);
+                        println!("Parse error: {e}");
                         self.show_error_dialog(&format!("Failed to parse ITF file: {e}"));
                     }
                 }
             }
             Err(e) => {
-                println!("File read error: {}", e);
+                println!("File read error: {e}");
                 self.show_error_dialog(&format!("Failed to read file: {e}"));
             }
         }

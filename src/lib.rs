@@ -285,9 +285,9 @@ mod tests {
 
     #[test]
     fn test_version_constants() {
-        assert!(!VERSION.is_empty());
-        assert!(!NAME.is_empty());
-        assert!(!DESCRIPTION.is_empty());
+        assert!(!VERSION.trim().is_empty());
+        assert!(!NAME.trim().is_empty());
+        assert!(!DESCRIPTION.trim().is_empty());
         
         assert_eq!(NAME, "itf-viewer");
         assert_eq!(VERSION, "0.1.0");
@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(config.window_height, cloned.window_height);
         
         // Test Debug formatting (should not panic)
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
         assert!(debug_str.contains("AppConfig"));
         assert!(debug_str.contains("window_title"));
     }
