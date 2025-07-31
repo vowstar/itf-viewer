@@ -175,8 +175,85 @@ pub struct LayerGeometry {
 }
 
 #[derive(Debug, Clone)]
+pub struct MultiTrapezoidShape {
+    pub trapezoids: Vec<TrapezoidShape>,
+}
+
+impl MultiTrapezoidShape {
+    pub fn from_conductor_layer(
+        layer: &ConductorLayer,
+        bottom_center: Pos2,
+        width: f32,
+        height: f32,
+        fill_color: Color32,
+        stroke: Stroke,
+        num_trapezoids: usize,
+    ) -> Self {
+        let num_trapezoids = num_trapezoids.max(3); // Minimum 3 trapezoids
+        let mut trapezoids = Vec::new();
+        
+        let segment_height = height / num_trapezoids as f32;
+        let side_tangent = layer.physical_props.side_tangent.unwrap_or(0.0) as f32;
+        
+        // Create trapezoids from bottom to top with gradual width changes
+        for i in 0..num_trapezoids {
+            let segment_bottom_y = bottom_center.y - (i as f32 * segment_height);
+            let segment_center = Pos2::new(bottom_center.x, segment_bottom_y);
+            
+            // Calculate width at this height level
+            let height_ratio = (i as f32) / (num_trapezoids as f32 - 1.0);
+            let width_change = height * side_tangent.abs() * height_ratio;
+            let segment_width = if side_tangent >= 0.0 {
+                // Top wider than bottom (negative trapezoid)
+                width + width_change * 2.0 // Multiply by 2 because width_change is half-width change
+            } else {
+                // Top narrower than bottom (positive trapezoid)
+                width - width_change * 2.0
+            };
+            
+            // Create segment-specific tangent for smooth transition
+            let segment_tangent = side_tangent * 3.0; // Exaggerated for visibility
+            
+            let trapezoid = TrapezoidShape::new(
+                segment_center,
+                segment_width.max(width * 0.1), // Minimum width of 10% of original
+                segment_height,
+                segment_tangent,
+                fill_color,
+                stroke,
+            );
+            
+            trapezoids.push(trapezoid);
+        }
+        
+        Self { trapezoids }
+    }
+    
+    pub fn to_egui_shapes(&self) -> Vec<Shape> {
+        self.trapezoids.iter().map(|t| t.to_egui_shape()).collect()
+    }
+    
+    pub fn contains_point(&self, point: Pos2) -> bool {
+        self.trapezoids.iter().any(|t| t.contains_point(point))
+    }
+    
+    pub fn get_bounds(&self) -> Rect {
+        if self.trapezoids.is_empty() {
+            return Rect::NOTHING;
+        }
+        
+        let mut bounds = self.trapezoids[0].get_bounds();
+        for trapezoid in &self.trapezoids[1..] {
+            bounds = bounds.union(trapezoid.get_bounds());
+        }
+        bounds
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum LayerShape {
     Trapezoid(TrapezoidShape),
+    MultiTrapezoid(MultiTrapezoidShape),
     Rectangle(RectangleShape),
 }
 
@@ -192,6 +269,21 @@ impl LayerGeometry {
             z_bottom,
             z_top,
             shape: LayerShape::Trapezoid(trapezoid),
+            is_selected: false,
+        }
+    }
+
+    pub fn new_multi_trapezoid(
+        layer_name: String,
+        z_bottom: f32,
+        z_top: f32,
+        multi_trapezoids: MultiTrapezoidShape,
+    ) -> Self {
+        Self {
+            layer_name,
+            z_bottom,
+            z_top,
+            shape: LayerShape::MultiTrapezoid(multi_trapezoids),
             is_selected: false,
         }
     }
@@ -218,6 +310,9 @@ impl LayerGeometry {
             LayerShape::Trapezoid(trap) => {
                 shapes.push(trap.to_egui_shape());
             }
+            LayerShape::MultiTrapezoid(multi_trap) => {
+                shapes.extend(multi_trap.to_egui_shapes());
+            }
             LayerShape::Rectangle(rect) => {
                 shapes.push(rect.to_egui_shape());
                 if self.is_selected {
@@ -232,6 +327,7 @@ impl LayerGeometry {
     pub fn contains_point(&self, point: Pos2) -> bool {
         match &self.shape {
             LayerShape::Trapezoid(trap) => trap.contains_point(point),
+            LayerShape::MultiTrapezoid(multi_trap) => multi_trap.contains_point(point),
             LayerShape::Rectangle(rect) => rect.contains_point(point),
         }
     }
@@ -239,6 +335,7 @@ impl LayerGeometry {
     pub fn get_bounds(&self) -> Rect {
         match &self.shape {
             LayerShape::Trapezoid(trap) => trap.get_bounds(),
+            LayerShape::MultiTrapezoid(multi_trap) => multi_trap.get_bounds(),
             LayerShape::Rectangle(rect) => rect.get_bounds(),
         }
     }
@@ -511,5 +608,170 @@ mod tests {
         // Should be proportional to height
         let width2 = calculate_optimal_layer_width(200.0, 800.0, 50.0);
         assert!(width2 > width);
+    }
+
+    #[test]
+    fn test_multi_trapezoid_creation() {
+        use crate::data::ConductorLayer;
+        
+        let conductor = ConductorLayer::new("test_conductor".to_string(), 1.0);
+        let multi_trap = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            5,
+        );
+        
+        // Should create exactly 5 trapezoids
+        assert_eq!(multi_trap.trapezoids.len(), 5);
+        
+        // All trapezoids should have the same segment height
+        let expected_segment_height = 100.0 / 5.0;
+        for trapezoid in &multi_trap.trapezoids {
+            let trap_bounds = trapezoid.get_bounds();
+            assert!((trap_bounds.height() - expected_segment_height).abs() < 1e-6);
+        }
+        
+        // Should enforce minimum of 3 trapezoids
+        let multi_trap_min = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            1, // Request only 1, should get 3
+        );
+        assert_eq!(multi_trap_min.trapezoids.len(), 3);
+    }
+
+    #[test]
+    fn test_multi_trapezoid_bounds() {
+        use crate::data::ConductorLayer;
+        
+        let conductor = ConductorLayer::new("test_conductor".to_string(), 1.0);
+        let multi_trap = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            3,
+        );
+        
+        let bounds = multi_trap.get_bounds();
+        
+        // Bounds should encompass all trapezoids
+        assert!(bounds.width() > 0.0);
+        assert!(bounds.height() > 0.0);
+        
+        // Each individual trapezoid should be within the overall bounds
+        for trapezoid in &multi_trap.trapezoids {
+            let trap_bounds = trapezoid.get_bounds();
+            assert!(bounds.contains_rect(trap_bounds));
+        }
+    }
+
+    #[test]
+    fn test_multi_trapezoid_point_containment() {
+        use crate::data::ConductorLayer;
+        
+        let conductor = ConductorLayer::new("test_conductor".to_string(), 1.0);
+        let multi_trap = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            3,
+        );
+        
+        let bounds = multi_trap.get_bounds();
+        let center_point = bounds.center();
+        
+        // Point at center should be contained
+        assert!(multi_trap.contains_point(center_point));
+        
+        // Point far outside should not be contained
+        let outside_point = Pos2::new(bounds.max.x + 100.0, bounds.max.y + 100.0);
+        assert!(!multi_trap.contains_point(outside_point));
+    }
+
+    #[test]
+    fn test_multi_trapezoid_shapes_generation() {
+        use crate::data::ConductorLayer;
+        
+        let conductor = ConductorLayer::new("test_conductor".to_string(), 1.0);
+        let multi_trap = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            4,
+        );
+        
+        let shapes = multi_trap.to_egui_shapes();
+        
+        // Should generate one shape per trapezoid
+        assert_eq!(shapes.len(), 4);
+        
+        // All shapes should be valid (not empty)
+        for shape in shapes {
+            match shape {
+                Shape::Mesh(_) => {}, // Valid shape type for convex polygons
+                Shape::Path(_) => {}, // Also valid
+                _ => panic!("Unexpected shape type for trapezoid"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_layer_geometry_multi_trapezoid() {
+        use crate::data::ConductorLayer;
+        
+        let conductor = ConductorLayer::new("test_conductor".to_string(), 1.0);
+        let multi_trap = MultiTrapezoidShape::from_conductor_layer(
+            &conductor,
+            Pos2::new(100.0, 200.0),
+            50.0,
+            100.0,
+            Color32::RED,
+            Stroke::new(1.0, Color32::BLACK),
+            3,
+        );
+        
+        let layer_geometry = LayerGeometry::new_multi_trapezoid(
+            "test_layer".to_string(),
+            0.0,
+            1.0,
+            multi_trap,
+        );
+        
+        // Test basic properties
+        assert_eq!(layer_geometry.layer_name, "test_layer");
+        assert_eq!(layer_geometry.z_bottom, 0.0);
+        assert_eq!(layer_geometry.z_top, 1.0);
+        assert!(!layer_geometry.is_selected);
+        
+        // Test shape generation
+        let shapes = layer_geometry.to_egui_shapes();
+        assert_eq!(shapes.len(), 3); // Should generate 3 shapes for 3 trapezoids
+        
+        // Test bounds
+        let bounds = layer_geometry.get_bounds();
+        assert!(bounds.width() > 0.0);
+        assert!(bounds.height() > 0.0);
+        
+        // Test selection
+        let mut layer_geometry_mut = layer_geometry.clone();
+        layer_geometry_mut.set_selected(true);
+        assert!(layer_geometry_mut.is_selected);
     }
 }

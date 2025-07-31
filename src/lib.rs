@@ -16,9 +16,10 @@
 //! 
 //! # Usage
 //! 
-//! ```rust
+//! ```rust,no_run
 //! use itf_viewer::parser::parse_itf_file;
 //! 
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Parse an ITF file
 //! let content = std::fs::read_to_string("example.itf")?;
 //! let stack = parse_itf_file(&content)?;
@@ -27,6 +28,8 @@
 //! let summary = stack.get_process_summary();
 //! println!("Technology: {}", summary.technology_name);
 //! println!("Total layers: {}", summary.total_layers);
+//! # Ok(())
+//! # }
 //! ```
 //! 
 //! # Architecture
@@ -90,11 +93,14 @@ pub fn get_library_info() -> String {
 /// 
 /// # Example
 /// 
-/// ```rust
+/// ```rust,no_run
 /// use itf_viewer::parse_itf_from_file;
 /// 
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let stack = parse_itf_from_file("example.itf")?;
 /// println!("Loaded stack with {} layers", stack.get_layer_count());
+/// # Ok(())
+/// # }
 /// ```
 pub fn parse_itf_from_file<P: AsRef<std::path::Path>>(
     file_path: P,
@@ -119,13 +125,16 @@ pub fn parse_itf_from_file<P: AsRef<std::path::Path>>(
 /// 
 /// # Example
 /// 
-/// ```rust
+/// ```rust,no_run
 /// use itf_viewer::validate_itf_content;
 /// 
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let content = std::fs::read_to_string("example.itf")?;
 /// if validate_itf_content(&content) {
 ///     println!("File appears to be valid ITF format");
 /// }
+/// # Ok(())
+/// # }
 /// ```
 pub fn validate_itf_content(content: &str) -> bool {
     // Basic validation - check for required keywords
@@ -205,11 +214,14 @@ impl Default for AppConfig {
 /// 
 /// # Example
 /// 
-/// ```rust
+/// ```rust,no_run
 /// use itf_viewer::{run_app, get_default_config};
 /// 
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = get_default_config();
 /// run_app(config)?;
+/// # Ok(())
+/// # }
 /// ```
 pub fn run_app(config: AppConfig) -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {

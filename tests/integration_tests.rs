@@ -18,8 +18,8 @@ fn test_full_parsing_workflow() {
     // Test process summary
     let summary = stack.get_process_summary();
     assert_eq!(summary.technology_name, "test_1p3m_generic");
-    assert_eq!(summary.conductor_layers, 3);
-    assert_eq!(summary.dielectric_layers, 4);
+    assert_eq!(summary.conductor_layers, 4); // poly + metal1 + metal2 + metal3
+    assert_eq!(summary.dielectric_layers, 5); // substrate_oxide + ild1 + ild2 + ild3 + passivation
     assert_eq!(summary.via_connections, 3);
     
     // Test layer access

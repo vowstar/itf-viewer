@@ -207,17 +207,20 @@ impl ProcessStack {
             }
         }
 
-        // Check via layer references - warn but don't fail for missing layers
-        // Real ITF files may reference layers that aren't fully defined
+        // Check via layer references
         for via in &self.via_stack.vias {
             if self.get_layer(&via.from_layer).is_none() {
-                eprintln!("Warning: Via '{}' references unknown layer '{}'", 
-                         via.name, via.from_layer);
+                return Err(StackValidationError::UnknownLayer {
+                    layer_name: via.from_layer.clone(),
+                    via_name: via.name.clone(),
+                });
             }
             
             if self.get_layer(&via.to_layer).is_none() {
-                eprintln!("Warning: Via '{}' references unknown layer '{}'", 
-                         via.name, via.to_layer);
+                return Err(StackValidationError::UnknownLayer {
+                    layer_name: via.to_layer.clone(),
+                    via_name: via.name.clone(),
+                });
             }
         }
 

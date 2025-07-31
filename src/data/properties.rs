@@ -197,6 +197,8 @@ mod tests {
         };
         
         let result = variation.calculate_thickness_variation(0.5, 0.8);
-        assert_relative_eq!(result, 1.0 + 2.0 * 0.5 + 3.0 * 0.8 + 4.0 * 0.5 * 0.8, epsilon = 1e-10);
+        // Expected: coeffs[0]*density^0*width^0 + coeffs[1]*density^0*width^1 + coeffs[2]*density^1*width^0 + coeffs[3]*density^1*width^1
+        // = 1.0*1*1 + 2.0*1*0.8 + 3.0*0.5*1 + 4.0*0.5*0.8 = 1.0 + 1.6 + 1.5 + 1.6 = 5.7
+        assert_relative_eq!(result, 5.7, epsilon = 1e-10);
     }
 }

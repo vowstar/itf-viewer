@@ -109,6 +109,7 @@ impl MainWindow {
             
             ToolbarAction::SetLayerWidth(width) => {
                 self.stack_viewer.set_layer_width(width);
+                self.toolbar.set_layer_width(width);
             }
             
             ToolbarAction::ToggleDimensions(show) => {
@@ -383,9 +384,10 @@ mod tests {
     fn test_toolbar_actions() {
         let mut window = MainWindow::new();
         
-        // Test file open action
-        window.handle_toolbar_action(ToolbarAction::OpenFile);
-        assert!(window.file_menu.is_open);
+        // Skip OpenFile test to avoid opening system file browser during automated tests
+        // Instead, test file loading directly using a test file
+        window.load_file_from_path(PathBuf::from("tests/data/real_world_test.itf"));
+        assert!(window.has_loaded_file());
         
         // Test reset view action (should not panic)
         window.handle_toolbar_action(ToolbarAction::ResetView);

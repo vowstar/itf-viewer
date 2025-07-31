@@ -224,7 +224,7 @@ pub enum LexError {
 }
 
 pub fn parse_number_list(input: &str) -> IResult<&str, Vec<f64>> {
-    use nom::character::complete::{char as nom_char, space0};
+    use nom::character::complete::{char as nom_char, space1};
     
     preceded(
         multispace0,
@@ -233,7 +233,7 @@ pub fn parse_number_list(input: &str) -> IResult<&str, Vec<f64>> {
             preceded(
                 multispace0,
                 separated_list0(
-                    preceded(space0, nom_char(',')),
+                    space1,
                     preceded(multispace0, double),
                 ),
             ),

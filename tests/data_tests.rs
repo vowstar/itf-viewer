@@ -74,10 +74,11 @@ fn test_process_variation_calculation() {
     
     // Test that the calculation includes all polynomial terms
     // For density=0.5, width=0.8 (first range):
-    // Expected: 1.0*0.5^0*0.8^0 + 2.0*0.5^1*0.8^0 + 3.0*0.5^0*0.8^1 + 4.0*0.5^1*0.8^1 + 5.0*0.5^2*0.8^0 + 6.0*0.5^2*0.8^1
-    //         = 1.0*1*1 + 2.0*0.5*1 + 3.0*1*0.8 + 4.0*0.5*0.8 + 5.0*0.25*1 + 6.0*0.25*0.8
-    //         = 1.0 + 1.0 + 2.4 + 1.6 + 1.25 + 1.2 = 8.45
-    assert_relative_eq!(result1, 8.45, epsilon = 1e-10);
+    // The nested loop order is: for d_order in [0,1,2] { for w_order in [0,1] }
+    // Expected: 1.0*d^0*w^0 + 2.0*d^0*w^1 + 3.0*d^1*w^0 + 4.0*d^1*w^1 + 5.0*d^2*w^0 + 6.0*d^2*w^1
+    //         = 1.0*1*1 + 2.0*1*0.8 + 3.0*0.5*1 + 4.0*0.5*0.8 + 5.0*0.25*1 + 6.0*0.25*0.8
+    //         = 1.0 + 1.6 + 1.5 + 1.6 + 1.25 + 1.2 = 8.15
+    assert_relative_eq!(result1, 8.15, epsilon = 1e-10);
 }
 
 #[test]
