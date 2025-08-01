@@ -34,7 +34,7 @@ impl LayerPanel {
 
                 if let Some(stack) = stack {
                     ScrollArea::vertical()
-                        .id_source("layer_list")
+                        .id_salt("layer_list")
                         .show(ui, |ui| {
                             self.show_process_summary(ui, stack);
                             ui.separator();

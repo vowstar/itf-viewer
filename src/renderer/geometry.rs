@@ -164,7 +164,7 @@ impl RectangleShape {
     }
 
     pub fn to_egui_shape_with_stroke(&self) -> Shape {
-        Shape::rect_stroke(self.rect, 0.0, self.stroke)
+        Shape::rect_stroke(self.rect, 0.0, self.stroke, egui::StrokeKind::Outside)
     }
 
     pub fn contains_point(&self, point: Pos2) -> bool {

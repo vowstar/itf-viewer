@@ -169,7 +169,7 @@ impl StackViewer {
             Vec2::new(200.0, 100.0),
         );
 
-        ui.allocate_ui_at_rect(overlay_rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
             egui::Frame::popup(ui.style())
                 .fill(Color32::from_black_alpha(200))
                 .show(ui, |ui| {

@@ -29,19 +29,19 @@ impl Toolbar {
             .resizable(false)
             .min_height(32.0)
             .show(ctx, |ui| {
-                egui::menu::bar(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     // File operations
                     ui.menu_button("File", |ui| {
                         if ui.button("Open ITF File").clicked() {
                             action = ToolbarAction::OpenFile;
-                            ui.close_menu();
+                            ui.close();
                         }
 
                         ui.separator();
 
                         if ui.button("Exit").clicked() {
                             action = ToolbarAction::Exit;
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
 
@@ -67,24 +67,24 @@ impl Toolbar {
 
                         if ui.button("Auto Fit").clicked() {
                             action = ToolbarAction::AutoFit;
-                            ui.close_menu();
+                            ui.close();
                         }
 
                         if ui.button("Reset View").clicked() {
                             action = ToolbarAction::ResetView;
-                            ui.close_menu();
+                            ui.close();
                         }
 
                         ui.separator();
 
                         if ui.button("Zoom In").clicked() {
                             action = ToolbarAction::ZoomIn;
-                            ui.close_menu();
+                            ui.close();
                         }
 
                         if ui.button("Zoom Out").clicked() {
                             action = ToolbarAction::ZoomOut;
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
 

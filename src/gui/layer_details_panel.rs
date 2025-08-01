@@ -53,7 +53,7 @@ impl LayerDetailsPanel {
                 if let Some(stack) = stack {
                     if let Some(ref selected_name) = self.selected_layer {
                         ScrollArea::vertical()
-                            .id_source("layer_details_scroll")
+                            .id_salt("layer_details_scroll")
                             .show(ui, |ui| {
                                 if let Some(layer) = stack.get_layer(selected_name) {
                                     self.show_layer_details(ui, layer);
