@@ -453,8 +453,33 @@ impl StackRenderer {
         scaler.analyze_stack(stack);
         let layer_geometries = self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
 
-        // Test from top to bottom (reverse order)
-        for geometry in layer_geometries.iter().rev() {
+        // Separate geometries by layer type for proper z-ordering hit testing
+        let mut dielectric_geometries = Vec::new();
+        let mut conductor_geometries = Vec::new();
+
+        for geometry in &layer_geometries {
+            // Check if this is a conductor layer by looking at the shape type
+            match &geometry.shape {
+                LayerShape::ThreeColumnTrapezoid(_) => {
+                    // All conductor layers use ThreeColumnTrapezoid
+                    conductor_geometries.push(geometry);
+                }
+                _ => {
+                    // All other shapes are dielectric layers
+                    dielectric_geometries.push(geometry);
+                }
+            }
+        }
+
+        // Test conductor layers first (highest z-index, rendered on top)
+        for geometry in conductor_geometries.iter().rev() {
+            if geometry.contains_point(point) {
+                return Some(geometry.layer_name.clone());
+            }
+        }
+
+        // Then test dielectric layers (lower z-index, rendered below)
+        for geometry in dielectric_geometries.iter().rev() {
             if geometry.contains_point(point) {
                 return Some(geometry.layer_name.clone());
             }
@@ -988,6 +1013,64 @@ mod tests {
         let visible_bounds = transform.get_visible_world_bounds();
         let stack_bounds = renderer.get_stack_bounds(&stack);
         assert!(visible_bounds.contains_rect(stack_bounds));
+    }
+
+    #[test]
+    fn test_hit_test_z_order_priority() {
+        let renderer = StackRenderer::new();
+
+        // Create a test stack with overlapping conductor and dielectric layers
+        let tech = TechnologyInfo::new("test_hit_z_order".to_string());
+        let mut stack = ProcessStack::new(tech);
+
+        // Add layers: dielectric first, then conductor embedded in it
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 2.0, 4.2)));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal".to_string(), 0.5))));
+
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+
+        // Verify we have both layers
+        assert_eq!(geometries.len(), 2);
+        
+        // Find the overlapping region bounds
+        let mut oxide_bounds = Rect::NOTHING;
+        let mut metal_bounds = Rect::NOTHING;
+        
+        for geometry in &geometries {
+            let bounds = geometry.get_bounds();
+            if geometry.layer_name == "oxide" {
+                oxide_bounds = bounds;
+            } else if geometry.layer_name == "metal" {
+                metal_bounds = bounds;
+            }
+        }
+
+        // Verify layers overlap (metal is embedded in oxide)
+        assert!(oxide_bounds.intersects(metal_bounds), "Oxide and metal layers should overlap");
+
+        // Test hit detection in the overlapping region
+        let overlap_center = metal_bounds.center();
+        
+        // Point in the overlapping region should hit the conductor (metal) first
+        let hit_result = renderer.hit_test(&stack, &transform, viewport_rect, overlap_center);
+        assert_eq!(hit_result, Some("metal".to_string()), 
+                  "Hit test in overlapping region should return conductor layer (higher z-index)");
+
+        // Test a point that's only in the dielectric (outside metal bounds)
+        let oxide_only_point = Pos2::new(oxide_bounds.max.x - 5.0, oxide_bounds.center().y);
+        
+        // Ensure this point is in oxide but not in metal
+        assert!(oxide_bounds.contains(oxide_only_point), "Test point should be in oxide");
+        assert!(!metal_bounds.contains(oxide_only_point), "Test point should not be in metal");
+        
+        let hit_result_oxide = renderer.hit_test(&stack, &transform, viewport_rect, oxide_only_point);
+        assert_eq!(hit_result_oxide, Some("oxide".to_string()), 
+                  "Hit test in oxide-only region should return dielectric layer");
     }
 
     #[test]
