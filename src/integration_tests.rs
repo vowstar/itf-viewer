@@ -124,7 +124,7 @@ mod tests {
         // Should have found varied thicknesses (0.2, 0.3, 0.5, 0.8, 1.0, 2.0)
         assert!(stats.thickness_ratio > 5.0); // 2.0 / 0.2 = 10.0
         assert_eq!(stats.min_scale_factor, 0.3);
-        assert_eq!(stats.max_scale_factor, 1.0);
+        assert_eq!(stats.max_scale_factor, 0.6);
 
         // Test exaggerated heights
         let heights = scaler.create_exaggerated_layer_heights(&stack);
@@ -149,7 +149,7 @@ mod tests {
         assert!(exaggerated_ratio < original_ratio); // Should be compressed from 10.0 to 3.33
 
         // Verify that the scale factors are correctly applied to max thickness
-        let expected_thickest = 2.0 * 1.0; // max_thickness * max_ratio = 2.0
+        let expected_thickest = 2.0 * 0.6; // max_thickness * max_ratio = 1.2 (60% scaling)
         let expected_thinnest = 2.0 * 0.3; // max_thickness * min_ratio = 0.6
 
         assert!((max_height - expected_thickest).abs() < 0.01);
@@ -353,11 +353,12 @@ mod tests {
         // Test that stack bounds account for thickness exaggeration
         let bounds = renderer.get_stack_bounds(&stack);
 
-        // Should be much larger than original stack height due to exaggeration
+        // In schematic mode, thicknesses are scaled between 30%-60%
+        // so the exaggerated height should be less than or equal to original height
         let original_height = stack.get_total_height() as f32;
         assert!(
-            bounds.height() != original_height,
-            "Bounds should use exaggerated height"
+            bounds.height() <= original_height,
+            "Bounds should use exaggerated height (scaled down in schematic mode)"
         );
 
         // Should be positive dimensions

@@ -108,7 +108,7 @@ impl LayerDetailsPanel {
             .default_open(true)
             .show(ui, |ui| {
                 ui.label(format!(
-                    "Dielectric constant (εᵣ): {:.2}",
+                    "Dielectric constant (εr): {:.2}",
                     layer.dielectric_constant
                 ));
 

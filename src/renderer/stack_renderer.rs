@@ -2427,7 +2427,7 @@ mod tests {
     fn test_dielectric_width_adapts_to_conductor_layout() {
         use crate::data::{ConductorLayer, DielectricLayer, TechnologyInfo};
 
-        let mut renderer = StackRenderer::new();
+        let renderer = StackRenderer::new();
         let tech = TechnologyInfo::new("test_tech".to_string());
         let mut stack = ProcessStack::new(tech);
 

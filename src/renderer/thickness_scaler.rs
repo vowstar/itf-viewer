@@ -327,8 +327,8 @@ mod tests {
         // Thinnest should be scaled to 30% of max thickness (2.0 * 0.3 = 0.6)
         assert!((thin_exaggerated - 2.0 * 0.3).abs() < 1e-6);
 
-        // Thickest should be scaled to 100% of max thickness (2.0 * 1.0 = 2.0)
-        assert!((thick_exaggerated - 2.0 * 1.0).abs() < 1e-6);
+        // Thickest should be scaled to 60% of max thickness (2.0 * 0.6 = 1.2)
+        assert!((thick_exaggerated - 2.0 * 0.6).abs() < 1e-6);
 
         // Middle values should be proportionally scaled
         let medium_exaggerated = scaler.get_exaggerated_thickness(1.0);

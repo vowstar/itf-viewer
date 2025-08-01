@@ -1572,14 +1572,14 @@ mod tests {
         let expected_normal = Some(3.0 * 2.0); // max thickness * 2.0
         assert_eq!(normal_width, expected_normal);
 
-        // Test with schematic mode scaler (30%-100% scaling)
+        // Test with schematic mode scaler (30%-60% scaling)
         let mut schematic_scaler = ThicknessScaler::new();
         schematic_scaler.set_schematic_mode(1.0, 3.0);
 
         let schematic_width =
             find_max_conductor_trapezoid_width_with_scaler(&conductors, &schematic_scaler);
-        // In schematic mode, the thick conductor (3.0) gets 100% scaling, so 3.0 * 1.0 * 2.0 = 6.0
-        let expected_schematic = Some(3.0 * 2.0); // scaled max thickness * 2.0
+        // In schematic mode, the thick conductor (3.0) gets 60% scaling, so 3.0 * 0.6 * 2.0 = 3.6
+        let expected_schematic = Some(3.6000001); // Account for float precision
         assert_eq!(schematic_width, expected_schematic);
 
         // Test with empty vector
