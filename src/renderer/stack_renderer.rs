@@ -20,10 +20,10 @@ pub struct StackRenderer {
     color_scheme: ColorScheme,
     layer_width: f32,
     show_dimensions: bool,
-    show_layer_names: bool,
+    pub show_layer_names: bool,
     show_schematic_mode: bool,
     selected_layer: Option<String>,
-    thickness_scaler: ThicknessScaler,
+    pub thickness_scaler: ThicknessScaler,
 }
 
 impl StackRenderer {
@@ -104,10 +104,8 @@ impl StackRenderer {
             ));
         }
 
-        // Add layer name labels
-        if self.show_layer_names {
-            shapes.extend(self.create_label_shapes(&layer_geometries, transform));
-        }
+        // Layer names are now drawn directly using painter in StackViewer
+        // to support proper text outlining with egui 0.32
 
         shapes
     }
@@ -561,26 +559,8 @@ impl StackRenderer {
         }
     }
 
-    fn create_label_shapes(
-        &self,
-        layer_geometries: &[LayerGeometry],
-        _transform: &ViewTransform,
-    ) -> Vec<Shape> {
-        let shapes = Vec::new();
-
-        for geometry in layer_geometries {
-            let bounds = geometry.get_bounds();
-            let _label_pos = Pos2::new(bounds.center().x, bounds.center().y);
-
-            // Only show labels for layers thick enough
-            if bounds.height() > 20.0 {
-                // Text rendering removed for compilation
-                // shapes.push(Shape::text(...));
-            }
-        }
-
-        shapes
-    }
+    // Layer name rendering is now handled in StackViewer using painter
+    // for proper text outlining support in egui 0.32
 
     pub fn set_layer_width(&mut self, width: f32) {
         self.layer_width = width.clamp(50.0, 500.0);
