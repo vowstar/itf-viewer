@@ -198,8 +198,12 @@ mod tests {
                     let expected_start = metal1_bounds.1; // Top of metal1
                     let expected_end = metal2_bounds.0;   // Bottom of metal2
                     
-                    assert!((via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6);
-                    assert!((via_geom.z_top - expected_start.max(expected_end)).abs() < 1e-6);
+                    assert!((via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6,
+                           "VIA {} z_bottom should be {}, but is {}", 
+                           via_geom.layer_name, expected_start.min(expected_end), via_geom.z_bottom);
+                    assert!((via_geom.z_top - expected_start.max(expected_end)).abs() < 1e-6,
+                           "VIA {} z_top should be {}, but is {}", 
+                           via_geom.layer_name, expected_start.max(expected_end), via_geom.z_top);
                 }
                 "via_m2_m3" => {
                     let metal2_bounds = layer_boundaries.get("metal2").unwrap();
@@ -209,8 +213,12 @@ mod tests {
                     let expected_start = metal2_bounds.1; // Top of metal2
                     let expected_end = metal3_bounds.0;   // Bottom of metal3
                     
-                    assert!((via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6);
-                    assert!((via_geom.z_top - expected_start.max(expected_end)).abs() < 1e-6);
+                    assert!((via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6,
+                           "VIA {} z_bottom should be {}, but is {}", 
+                           via_geom.layer_name, expected_start.min(expected_end), via_geom.z_bottom);
+                    assert!((via_geom.z_top - expected_start.max(expected_end)).abs() < 1e-6,
+                           "VIA {} z_top should be {}, but is {}", 
+                           via_geom.layer_name, expected_start.max(expected_end), via_geom.z_top);
                 }
                 _ => panic!("Unexpected VIA name: {}", via_geom.layer_name),
             }
