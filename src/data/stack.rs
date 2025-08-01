@@ -177,7 +177,29 @@ impl ProcessStack {
         self.via_stack.len()
     }
 
+    pub fn get_valid_vias(&self) -> Vec<&crate::data::via::ViaConnection> {
+        self.via_stack.vias.iter()
+            .filter(|via| {
+                self.get_layer(&via.from_layer).is_some() && 
+                self.get_layer(&via.to_layer).is_some()
+            })
+            .collect()
+    }
+
+    pub fn get_invalid_vias(&self) -> Vec<&crate::data::via::ViaConnection> {
+        self.via_stack.vias.iter()
+            .filter(|via| {
+                self.get_layer(&via.from_layer).is_none() || 
+                self.get_layer(&via.to_layer).is_none()
+            })
+            .collect()
+    }
+
     pub fn validate_stack(&self) -> Result<(), StackValidationError> {
+        self.validate_stack_strict()
+    }
+
+    pub fn validate_stack_strict(&self) -> Result<(), StackValidationError> {
         if self.layers.is_empty() {
             return Err(StackValidationError::EmptyStack);
         }
@@ -207,7 +229,7 @@ impl ProcessStack {
             }
         }
 
-        // Check via layer references
+        // Check via layer references - strict mode fails on missing layers
         for via in &self.via_stack.vias {
             if self.get_layer(&via.from_layer).is_none() {
                 return Err(StackValidationError::UnknownLayer {
@@ -225,6 +247,51 @@ impl ProcessStack {
         }
 
         Ok(())
+    }
+
+    pub fn validate_stack_lenient(&self) -> Result<Vec<String>, StackValidationError> {
+        if self.layers.is_empty() {
+            return Err(StackValidationError::EmptyStack);
+        }
+
+        let mut warnings = Vec::new();
+
+        for (i, layer) in self.layers.iter().enumerate() {
+            // Only check for negative thickness - allow zero thickness layers
+            if layer.thickness() < 0.0 {
+                return Err(StackValidationError::InvalidThickness {
+                    layer_name: layer.name().to_string(),
+                    thickness: layer.thickness(),
+                });
+            }
+
+            if i > 0 {
+                let prev_layer = &self.layers[i - 1];
+                let expected_z = prev_layer.get_top_z();
+                let actual_z = layer.get_bottom_z();
+                
+                if (expected_z - actual_z).abs() > 1e-10 {
+                    return Err(StackValidationError::LayerPositionMismatch {
+                        layer_name: layer.name().to_string(),
+                        expected_z,
+                        actual_z,
+                    });
+                }
+            }
+        }
+
+        // Check via layer references - lenient mode warns but continues
+        for via in &self.via_stack.vias {
+            if self.get_layer(&via.from_layer).is_none() {
+                warnings.push(format!("VIA '{}' references unknown FROM layer '{}'", via.name, via.from_layer));
+            }
+            
+            if self.get_layer(&via.to_layer).is_none() {
+                warnings.push(format!("VIA '{}' references unknown TO layer '{}'", via.name, via.to_layer));
+            }
+        }
+
+        Ok(warnings)
     }
 
     pub fn get_process_summary(&self) -> ProcessSummary {

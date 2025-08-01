@@ -48,6 +48,9 @@ pub mod renderer;
 pub mod gui;
 pub mod utils;
 
+#[cfg(test)]
+mod integration_tests;
+
 // Re-export commonly used types
 pub use data::{
     ProcessStack, Layer, DielectricLayer, ConductorLayer, ViaConnection,

@@ -84,8 +84,27 @@ impl ItfParser {
             }
         }
 
-        stack.validate_stack()
-            .map_err(|e| ParseError::ValidationError(format!("{e}")))?;
+        // Try strict validation first
+        match stack.validate_stack_strict() {
+            Ok(()) => {
+                // Strict validation passed
+            }
+            Err(_) => {
+                // Strict validation failed, try lenient validation
+                match stack.validate_stack_lenient() {
+                    Ok(warnings) => {
+                        // Print warnings for missing layer references but continue
+                        for warning in warnings {
+                            eprintln!("Warning: {}", warning);
+                        }
+                    }
+                    Err(e) => {
+                        // Even lenient validation failed - this is a serious error
+                        return Err(ParseError::ValidationError(format!("{e}")));
+                    }
+                }
+            }
+        }
 
         Ok(stack)
     }

@@ -6,6 +6,16 @@ use crate::data::{ProcessStack, Layer};
 use crate::renderer::{colors::ColorScheme, geometry::*, thickness_scaler::ThicknessScaler};
 use std::collections::HashMap;
 
+/// Parameters for creating a single layer geometry
+struct LayerGeometryParams<'a> {
+    layer: &'a Layer,
+    layer_index: usize,
+    z_bottom: f32,
+    z_top: f32,
+    exaggerated_height: f32,
+    layer_width: f32,
+}
+
 pub struct StackRenderer {
     color_scheme: ColorScheme,
     layer_width: f32,
@@ -66,197 +76,9 @@ impl StackRenderer {
         shapes
     }
 
-    fn create_layer_geometries(
-        &self,
-        stack: &ProcessStack,
-        transform: &ViewTransform,
-        viewport_rect: Rect,
-    ) -> Vec<LayerGeometry> {
-        let mut geometries = Vec::new();
-        let center_x = 0.0; // World coordinate center
-        let stack_height = stack.get_total_height() as f32;
-        
-        // Calculate optimal layer width based on stack height and viewport
-        let layer_width = calculate_optimal_layer_width(
-            stack_height,
-            viewport_rect.width(),
-            50.0,
-        );
-        
-        for (layer_index, layer) in stack.layers.iter().enumerate() {
-            let z_bottom = layer.get_bottom_z() as f32;
-            let z_top = layer.get_top_z() as f32;
-            let layer_height = z_top - z_bottom;
-            
-            // Convert to screen coordinates
-            let world_bottom = Pos2::new(center_x, -z_bottom); // Flip Y axis
-            let screen_bottom = transform.world_to_screen(world_bottom);
-            let screen_height = layer_height * transform.scale;
-            let screen_width = layer_width * transform.scale;
-            
-            let is_selected = self.selected_layer.as_deref() == Some(layer.name());
-            let base_color = self.color_scheme.get_layer_color(layer, layer_index);
-            let alpha = self.color_scheme.get_layer_alpha(layer, is_selected);
-            let color = self.color_scheme.apply_alpha(base_color, alpha);
-            let outline_color = self.color_scheme.get_layer_outline_color(is_selected);
-            let stroke = Stroke::new(if is_selected { 2.0 } else { 1.0 }, outline_color);
-            
-            let geometry = match layer {
-                Layer::Conductor(conductor) => {
-                    if conductor.is_trapezoid() {
-                        let trapezoid = TrapezoidShape::from_conductor_layer(
-                            conductor,
-                            Pos2::new(screen_bottom.x, screen_bottom.y),
-                            screen_width,
-                            screen_height,
-                            color,
-                            stroke,
-                        );
-                        LayerGeometry::new_trapezoid(
-                            layer.name().to_string(),
-                            z_bottom,
-                            z_top,
-                            trapezoid,
-                        )
-                    } else {
-                        let rectangle = RectangleShape::new(
-                            Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                            screen_width,
-                            screen_height,
-                            color,
-                            stroke,
-                        );
-                        LayerGeometry::new_rectangle(
-                            layer.name().to_string(),
-                            z_bottom,
-                            z_top,
-                            rectangle,
-                        )
-                    }
-                }
-                Layer::Dielectric(_) => {
-                    let rectangle = RectangleShape::new(
-                        Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                        screen_width,
-                        screen_height,
-                        color,
-                        stroke,
-                    );
-                    LayerGeometry::new_rectangle(
-                        layer.name().to_string(),
-                        z_bottom,
-                        z_top,
-                        rectangle,
-                    )
-                }
-            };
-            
-            geometries.push(geometry);
-        }
-        
-        geometries
-    }
 
-    fn create_layer_geometries_with_scaler(
-        &self,
-        stack: &ProcessStack,
-        scaler: &ThicknessScaler,
-        transform: &ViewTransform,
-        viewport_rect: Rect,
-    ) -> Vec<LayerGeometry> {
-        let mut geometries = Vec::new();
-        let center_x = 0.0; // World coordinate center
-        
-        // Get exaggerated layer heights
-        let exaggerated_heights = scaler.create_exaggerated_layer_heights(stack);
-        let total_exaggerated_height = exaggerated_heights.iter().sum::<f32>();
-        
-        // Calculate optimal layer width based on exaggerated stack height and viewport
-        let layer_width = calculate_optimal_layer_width(
-            total_exaggerated_height,
-            viewport_rect.width(),
-            50.0,
-        );
-        
-        // Calculate cumulative positions with exaggerated heights
-        let mut current_z = 0.0f32;
-        
-        for (layer_index, layer) in stack.layers.iter().enumerate() {
-            let exaggerated_height = exaggerated_heights[layer_index];
-            let z_bottom = current_z;
-            let z_top = current_z + exaggerated_height;
-            current_z = z_top;
-            
-            // Convert to screen coordinates
-            let world_bottom = Pos2::new(center_x, -z_bottom); // Flip Y axis
-            let screen_bottom = transform.world_to_screen(world_bottom);
-            let screen_height = exaggerated_height * transform.scale;
-            let screen_width = layer_width * transform.scale;
-            
-            let is_selected = self.selected_layer.as_deref() == Some(layer.name());
-            let base_color = self.color_scheme.get_layer_color(layer, layer_index);
-            let alpha = self.color_scheme.get_layer_alpha(layer, is_selected);
-            let color = self.color_scheme.apply_alpha(base_color, alpha);
-            let outline_color = self.color_scheme.get_layer_outline_color(is_selected);
-            let stroke = Stroke::new(if is_selected { 2.0 } else { 1.0 }, outline_color);
-            
-            let geometry = match layer {
-                Layer::Conductor(conductor) => {
-                    if conductor.is_trapezoid() {
-                        let trapezoid = TrapezoidShape::from_conductor_layer(
-                            conductor,
-                            Pos2::new(screen_bottom.x, screen_bottom.y),
-                            screen_width,
-                            screen_height,
-                            color,
-                            stroke,
-                        );
-                        LayerGeometry::new_trapezoid(
-                            layer.name().to_string(),
-                            z_bottom,
-                            z_top,
-                            trapezoid,
-                        )
-                    } else {
-                        let rectangle = RectangleShape::new(
-                            Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                            screen_width,
-                            screen_height,
-                            color,
-                            stroke,
-                        );
-                        LayerGeometry::new_rectangle(
-                            layer.name().to_string(),
-                            z_bottom,
-                            z_top,
-                            rectangle,
-                        )
-                    }
-                }
-                Layer::Dielectric(_) => {
-                    let rectangle = RectangleShape::new(
-                        Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                        screen_width,
-                        screen_height,
-                        color,
-                        stroke,
-                    );
-                    LayerGeometry::new_rectangle(
-                        layer.name().to_string(),
-                        z_bottom,
-                        z_top,
-                        rectangle,
-                    )
-                }
-            };
-            
-            geometries.push(geometry);
-        }
-        
-        geometries
-    }
 
-    fn create_layer_geometries_ordered(
+    pub fn create_layer_geometries_ordered(
         &self,
         stack: &ProcessStack,
         scaler: &ThicknessScaler,
@@ -284,15 +106,15 @@ impl StackRenderer {
             let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, dielectric)).unwrap();
             let exaggerated_height = scaler.get_exaggerated_thickness(dielectric.thickness() as f32);
             
-            let geometry = self.create_single_layer_geometry(
-                dielectric,
+            let params = LayerGeometryParams {
+                layer: dielectric,
                 layer_index,
-                current_z,
-                current_z + exaggerated_height,
+                z_bottom: current_z,
+                z_top: current_z + exaggerated_height,
                 exaggerated_height,
                 layer_width,
-                transform,
-            );
+            };
+            let geometry = self.create_single_layer_geometry(&params, transform);
             
             geometries.push(geometry);
             current_z += exaggerated_height;
@@ -304,15 +126,15 @@ impl StackRenderer {
             let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, conductor)).unwrap();
             let exaggerated_height = scaler.get_exaggerated_thickness(conductor.thickness() as f32);
             
-            let geometry = self.create_single_layer_geometry(
-                conductor,
+            let params = LayerGeometryParams {
+                layer: conductor,
                 layer_index,
-                current_z,
-                current_z + exaggerated_height,
+                z_bottom: current_z,
+                z_top: current_z + exaggerated_height,
                 exaggerated_height,
                 layer_width,
-                transform,
-            );
+            };
+            let geometry = self.create_single_layer_geometry(&params, transform);
             
             geometries.push(geometry);
             current_z += exaggerated_height;
@@ -323,30 +145,25 @@ impl StackRenderer {
 
     fn create_single_layer_geometry(
         &self,
-        layer: &Layer,
-        layer_index: usize,
-        z_bottom: f32,
-        z_top: f32,
-        exaggerated_height: f32,
-        layer_width: f32,
+        params: &LayerGeometryParams,
         transform: &ViewTransform,
     ) -> LayerGeometry {
         let center_x = 0.0;
         
         // Convert to screen coordinates
-        let world_bottom = Pos2::new(center_x, -z_bottom); // Flip Y axis
+        let world_bottom = Pos2::new(center_x, -params.z_bottom); // Flip Y axis
         let screen_bottom = transform.world_to_screen(world_bottom);
-        let screen_height = exaggerated_height * transform.scale;
-        let screen_width = layer_width * transform.scale;
+        let screen_height = params.exaggerated_height * transform.scale;
+        let screen_width = params.layer_width * transform.scale;
         
-        let is_selected = self.selected_layer.as_deref() == Some(layer.name());
-        let base_color = self.color_scheme.get_layer_color(layer, layer_index);
-        let alpha = self.color_scheme.get_layer_alpha(layer, is_selected);
+        let is_selected = self.selected_layer.as_deref() == Some(params.layer.name());
+        let base_color = self.color_scheme.get_layer_color(params.layer, params.layer_index);
+        let alpha = self.color_scheme.get_layer_alpha(params.layer, is_selected);
         let color = self.color_scheme.apply_alpha(base_color, alpha);
         let outline_color = self.color_scheme.get_layer_outline_color(is_selected);
         let stroke = Stroke::new(if is_selected { 2.0 } else { 1.0 }, outline_color);
         
-        match layer {
+        match params.layer {
             Layer::Conductor(conductor) => {
                 if conductor.is_trapezoid() {
                     // Use multiple trapezoids for better visualization (minimum 3)
@@ -361,9 +178,9 @@ impl StackRenderer {
                         num_trapezoids,
                     );
                     LayerGeometry::new_multi_trapezoid(
-                        layer.name().to_string(),
-                        z_bottom,
-                        z_top,
+                        params.layer.name().to_string(),
+                        params.z_bottom,
+                        params.z_top,
                         multi_trapezoid,
                     )
                 } else {
@@ -375,9 +192,9 @@ impl StackRenderer {
                         stroke,
                     );
                     LayerGeometry::new_rectangle(
-                        layer.name().to_string(),
-                        z_bottom,
-                        z_top,
+                        params.layer.name().to_string(),
+                        params.z_bottom,
+                        params.z_top,
                         rectangle,
                     )
                 }
@@ -391,61 +208,17 @@ impl StackRenderer {
                     stroke,
                 );
                 LayerGeometry::new_rectangle(
-                    layer.name().to_string(),
-                    z_bottom,
-                    z_top,
+                    params.layer.name().to_string(),
+                    params.z_bottom,
+                    params.z_top,
                     rectangle,
                 )
             }
         }
     }
 
-    fn create_via_geometries(
-        &self,
-        stack: &ProcessStack,
-        transform: &ViewTransform,
-        _viewport_rect: Rect,
-    ) -> Vec<LayerGeometry> {
-        let mut geometries = Vec::new();
-        let center_x = 0.0;
-        
-        for via in stack.via_stack.iter() {
-            let z_bottom = via.get_bottom_z() as f32;
-            let z_top = via.get_top_z() as f32;
-            let via_height = z_top - z_bottom;
-            let via_width = via.get_via_width() as f32 * 50.0; // Scale up for visibility
-            
-            // Convert to screen coordinates
-            let world_center = Pos2::new(center_x, -(z_bottom + via_height * 0.5)); // Flip Y axis
-            let screen_center = transform.world_to_screen(world_center);
-            let screen_height = via_height * transform.scale;
-            let screen_width = via_width * transform.scale;
-            
-            let via_color = self.color_scheme.get_via_color(via.get_via_type());
-            let stroke = Stroke::new(1.0, Color32::BLACK);
-            
-            let rectangle = RectangleShape::new(
-                screen_center,
-                screen_width,
-                screen_height,
-                via_color,
-                stroke,
-            );
-            
-            let geometry = LayerGeometry::new_rectangle(
-                via.name.clone(),
-                z_bottom,
-                z_top,
-                rectangle,
-            );
-            
-            geometries.push(geometry);
-        }
-        
-        geometries
-    }
 
-    fn create_via_geometries_with_scaler(
+    pub fn create_via_geometries_with_scaler(
         &self,
         stack: &ProcessStack,
         scaler: &ThicknessScaler,
@@ -523,32 +296,8 @@ impl StackRenderer {
         geometries
     }
 
-    fn calculate_ordered_layer_positions(&self, stack: &ProcessStack, scaler: &ThicknessScaler) -> HashMap<String, f32> {
-        let mut layer_positions = HashMap::new();
-        let mut current_z = 0.0f32;
-        
-        // First, position all DIELECTRIC layers
-        let dielectric_layers = stack.get_dielectric_layers();
-        for dielectric in dielectric_layers {
-            let exaggerated_height = scaler.get_exaggerated_thickness(dielectric.thickness() as f32);
-            let center_z = current_z + exaggerated_height * 0.5;
-            layer_positions.insert(dielectric.name().to_string(), center_z);
-            current_z += exaggerated_height;
-        }
-        
-        // Then, position all CONDUCTOR layers
-        let conductor_layers = stack.get_conductor_layers();
-        for conductor in conductor_layers {
-            let exaggerated_height = scaler.get_exaggerated_thickness(conductor.thickness() as f32);
-            let center_z = current_z + exaggerated_height * 0.5;
-            layer_positions.insert(conductor.name().to_string(), center_z);
-            current_z += exaggerated_height;
-        }
-        
-        layer_positions
-    }
 
-    fn calculate_ordered_layer_boundaries(&self, stack: &ProcessStack, scaler: &ThicknessScaler) -> HashMap<String, (f32, f32)> {
+    pub fn calculate_ordered_layer_boundaries(&self, stack: &ProcessStack, scaler: &ThicknessScaler) -> HashMap<String, (f32, f32)> {
         let mut layer_boundaries = HashMap::new();
         let mut current_z = 0.0f32;
         
@@ -575,51 +324,6 @@ impl StackRenderer {
         layer_boundaries
     }
 
-    fn create_dimension_shapes(
-        &self,
-        stack: &ProcessStack,
-        transform: &ViewTransform,
-        viewport_rect: Rect,
-    ) -> Vec<Shape> {
-        let mut shapes = Vec::new();
-        let margin = 20.0;
-        let dimension_x = viewport_rect.max.x - margin - 60.0;
-        
-        for layer in &stack.layers {
-            let z_bottom = layer.get_bottom_z() as f32;
-            let z_top = layer.get_top_z() as f32;
-            let thickness = z_top - z_bottom;
-            
-            let world_bottom = Pos2::new(0.0, -z_bottom);
-            let world_top = Pos2::new(0.0, -z_top);
-            let screen_bottom = transform.world_to_screen(world_bottom);
-            let screen_top = transform.world_to_screen(world_top);
-            
-            // Draw dimension line
-            let dim_start = Pos2::new(dimension_x, screen_bottom.y);
-            let dim_end = Pos2::new(dimension_x, screen_top.y);
-            
-            shapes.push(Shape::line_segment(
-                [dim_start, dim_end],
-                Stroke::new(1.0, self.color_scheme.get_dimension_text_color()),
-            ));
-            
-            // Draw dimension text
-            let _dim_center = Pos2::new(dimension_x + 30.0, (screen_bottom.y + screen_top.y) * 0.5);
-            let _thickness_text = if thickness >= 1.0 {
-                format!("{thickness:.2}")
-            } else if thickness >= 0.01 {
-                format!("{thickness:.3}")
-            } else {
-                format!("{thickness:.1e}")
-            };
-            
-            // Text rendering removed for compilation
-            // shapes.push(Shape::text(...));
-        }
-        
-        shapes
-    }
 
     fn create_dimension_shapes_with_scaler(
         &self,
