@@ -266,7 +266,7 @@ impl StackRenderer {
         let layer_width =
             calculate_optimal_layer_width(total_exaggerated_height, viewport_rect.width(), 50.0);
 
-        for (via_index, via) in stack.via_stack.iter().enumerate() {
+        for via in stack.via_stack.iter() {
             // Find boundary positions for FROM and TO layers
             let from_bounds = layer_boundaries.get(&via.from_layer);
             let to_bounds = layer_boundaries.get(&via.to_layer);
@@ -301,20 +301,22 @@ impl StackRenderer {
                 // Create three vias using SCREEN coordinate system (same as metal)
                 // Match the exact metal column positions: spacing = screen_layer_width / 4.0
                 let spacing = screen_layer_width / 4.0;
-                // Small offset for multiple via connections to prevent overlap
-                let connection_offset = (via_index as f32) * screen_layer_width * 0.02;
+                // No offset needed - vias should align perfectly with metal columns
 
                 let screen_positions = [
-                    screen_center.x - spacing + connection_offset, // Left (matches metal left)
-                    screen_center.x + connection_offset,           // Center (matches metal center)
-                    screen_center.x + spacing + connection_offset, // Right (matches metal right)
+                    screen_center.x - spacing, // Left (matches metal left)
+                    screen_center.x,           // Center (matches metal center)
+                    screen_center.x + spacing, // Right (matches metal right)
                 ];
+
+                // Vias now perfectly aligned with metal trapezoid columns
 
                 for (i, &screen_x) in screen_positions.iter().enumerate() {
                     // Create via rectangle directly in screen coordinates
                     let via_screen_center = Pos2::new(screen_x, screen_center.y);
 
-                    let via_color = self.color_scheme.get_via_color(via.get_via_type());
+                    // Use silver-gray color for vias as requested
+                    let via_color = Color32::from_rgb(192, 192, 192); // Silver-gray color
                     let stroke = Stroke::new(2.0, Color32::DARK_GRAY);
 
                     let rectangle = RectangleShape::new(
