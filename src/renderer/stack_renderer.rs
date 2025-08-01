@@ -3,7 +3,7 @@
 
 use crate::data::{Layer, ProcessStack};
 use crate::renderer::{colors::ColorScheme, geometry::*, thickness_scaler::ThicknessScaler};
-use egui::{Color32, Pos2, Rect, Shape, Stroke, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
 use std::collections::HashMap;
 
 /// Parameters for creating a single layer geometry
@@ -104,12 +104,290 @@ impl StackRenderer {
             ));
         }
 
-        // Add layer name text shapes if enabled (render on top with highest z-order)
-        if self.show_layer_names {
-            shapes.extend(self.create_text_shapes(&layer_geometries, transform));
+        shapes
+    }
+
+    /// Render the stack with text, using a painter for proper text rendering
+    pub fn render_stack_with_painter(
+        &self,
+        stack: &ProcessStack,
+        transform: &ViewTransform,
+        viewport_rect: Rect,
+        painter: &egui::Painter,
+    ) {
+        // Create scaler for layer thickness
+        let scaler = if self.show_schematic_mode {
+            self.create_schematic_scaler(stack)
+        } else {
+            self.create_normal_scaler(stack)
+        };
+
+        // Get all layer geometries
+        let layer_geometries =
+            self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
+        let via_geometries =
+            self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
+
+        // Render all layer geometries
+        for geometry in &layer_geometries {
+            // Add layer shapes
+            for shape in geometry.to_egui_shapes() {
+                painter.add(shape);
+            }
         }
 
-        shapes
+        // Render vias on top of all layers (highest z-index)
+        for geometry in &via_geometries {
+            for shape in geometry.to_egui_shapes() {
+                painter.add(shape);
+            }
+        }
+
+        // Render text with smart positioning based on layer type and height
+        if self.show_layer_names {
+            self.render_text_with_smart_positioning(
+                &layer_geometries,
+                &via_geometries,
+                painter,
+                transform,
+            );
+        }
+
+        // Add dimension annotations with text using painter (but not in schematic mode)
+        if self.show_dimensions && !self.show_schematic_mode {
+            self.render_dimensions_with_painter(stack, transform, viewport_rect, painter);
+        }
+    }
+
+    /// Render text with smart positioning based on layer type and height constraints
+    fn render_text_with_smart_positioning(
+        &self,
+        layer_geometries: &[LayerGeometry],
+        via_geometries: &[LayerGeometry],
+        painter: &egui::Painter,
+        transform: &ViewTransform,
+    ) {
+        // Dynamic font size based on zoom level
+        let base_font_size = 12.0;
+        let zoom_factor = transform.scale.clamp(0.5, 3.0);
+        let dynamic_font_size = (base_font_size * zoom_factor).clamp(8.0, 20.0);
+        let font_id = FontId::proportional(dynamic_font_size);
+
+        // Separate layers by type based on their shape
+        let mut dielectric_layers = Vec::new();
+        let mut conductor_layers = Vec::new();
+
+        for geometry in layer_geometries {
+            match &geometry.shape {
+                LayerShape::ThreeColumnTrapezoid(_) => {
+                    // Conductor layers use ThreeColumnTrapezoid
+                    conductor_layers.push(geometry);
+                }
+                _ => {
+                    // All other shapes are dielectric layers
+                    dielectric_layers.push(geometry);
+                }
+            }
+        }
+
+        // Render dielectric layer names on the left side of dielectric shapes
+        for geometry in &dielectric_layers {
+            self.render_dielectric_text(geometry, painter, &font_id);
+        }
+
+        // Render conductor layer names on the left side of the center column
+        for geometry in &conductor_layers {
+            self.render_conductor_text(geometry, painter, &font_id);
+        }
+
+        // Render via names on the right side of vias
+        for geometry in via_geometries {
+            self.render_via_text(geometry, painter, &font_id);
+        }
+    }
+
+    /// Render text for dielectric layers on the left side, constrained by layer height
+    fn render_dielectric_text(
+        &self,
+        geometry: &LayerGeometry,
+        painter: &egui::Painter,
+        font_id: &FontId,
+    ) {
+        let bounds = geometry.get_bounds();
+        let layer_height = bounds.height();
+        let layer_name = &geometry.layer_name;
+
+        // Calculate maximum font size that fits within layer height
+        let max_font_size_for_height = (layer_height * 0.8).clamp(8.0, font_id.size);
+        let adjusted_font_id = if max_font_size_for_height < font_id.size {
+            FontId::proportional(max_font_size_for_height)
+        } else {
+            font_id.clone()
+        };
+
+        // Position text on the left side of the dielectric layer
+        let text_pos = Pos2::new(
+            bounds.min.x - 5.0, // 5 pixels to the left of the layer
+            bounds.center().y,  // Vertically centered
+        );
+
+        println!(
+            "DEBUG: Dielectric '{}' - layer height: {:.1}, font size: {:.1}, pos: {:?}",
+            layer_name, layer_height, adjusted_font_id.size, text_pos
+        );
+
+        // Render text with outline
+        self.render_outlined_text(text_pos, layer_name, &adjusted_font_id, painter);
+    }
+
+    /// Render text for conductor layers on the left side of center column, constrained by layer height
+    fn render_conductor_text(
+        &self,
+        geometry: &LayerGeometry,
+        painter: &egui::Painter,
+        font_id: &FontId,
+    ) {
+        let bounds = geometry.get_bounds();
+        let layer_height = bounds.height();
+        let layer_name = &geometry.layer_name;
+
+        // Calculate maximum font size that fits within layer height
+        let max_font_size_for_height = (layer_height * 0.8).clamp(8.0, font_id.size);
+        let adjusted_font_id = if max_font_size_for_height < font_id.size {
+            FontId::proportional(max_font_size_for_height)
+        } else {
+            font_id.clone()
+        };
+
+        // For ThreeColumnTrapezoid, position text centered in the middle column
+        let center_x = bounds.center().x;
+        let text_pos = Pos2::new(
+            center_x,          // Center of the middle column
+            bounds.center().y, // Vertically centered
+        );
+
+        // Render text with outline, centered alignment
+        self.render_outlined_text_centered(text_pos, layer_name, &adjusted_font_id, painter);
+    }
+
+    /// Render text for vias on the right side, constrained by via height
+    fn render_via_text(&self, geometry: &LayerGeometry, painter: &egui::Painter, font_id: &FontId) {
+        let bounds = geometry.get_bounds();
+        let via_height = bounds.height();
+        let layer_name = &geometry.layer_name;
+
+        // Extract base name from via name (remove _0, _1, _2 suffix)
+        let base_name = if let Some(underscore_pos) = layer_name.rfind('_') {
+            if let Some(suffix) = layer_name.get(underscore_pos + 1..) {
+                // Check if suffix is a digit (0, 1, 2)
+                if suffix.chars().all(|c| c.is_ascii_digit()) {
+                    &layer_name[..underscore_pos]
+                } else {
+                    layer_name
+                }
+            } else {
+                layer_name
+            }
+        } else {
+            layer_name
+        };
+
+        // Only show text for middle column via (suffix _1) to avoid duplication
+        if layer_name.ends_with("_1") {
+            // Calculate maximum font size that fits within via height
+            let max_font_size_for_height = (via_height * 0.8).clamp(8.0, font_id.size);
+            let adjusted_font_id = if max_font_size_for_height < font_id.size {
+                FontId::proportional(max_font_size_for_height)
+            } else {
+                font_id.clone()
+            };
+
+            // Position text centered in the right column (third column)
+            let right_column_center_x = bounds.max.x - bounds.width() / 6.0; // Center of right column
+            let text_pos = Pos2::new(
+                right_column_center_x, // Center of the right column
+                bounds.center().y,     // Vertically centered
+            );
+
+            // Render text with outline using base name, centered alignment
+            self.render_outlined_text_centered(text_pos, base_name, &adjusted_font_id, painter);
+        }
+    }
+
+    /// Helper function to render outlined text
+    fn render_outlined_text(
+        &self,
+        pos: Pos2,
+        text: &str,
+        font_id: &FontId,
+        painter: &egui::Painter,
+    ) {
+        // Render black outline for contrast
+        for offset in &[
+            Vec2::new(-1.0, -1.0),
+            Vec2::new(0.0, -1.0),
+            Vec2::new(1.0, -1.0),
+            Vec2::new(-1.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(-1.0, 1.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 1.0),
+        ] {
+            painter.text(
+                pos + *offset,
+                Align2::CENTER_CENTER,
+                text,
+                font_id.clone(),
+                Color32::BLACK,
+            );
+        }
+
+        // Render white text on top
+        painter.text(
+            pos,
+            Align2::CENTER_CENTER,
+            text,
+            font_id.clone(),
+            Color32::WHITE,
+        );
+    }
+
+    /// Helper function to render outlined text with center alignment
+    fn render_outlined_text_centered(
+        &self,
+        pos: Pos2,
+        text: &str,
+        font_id: &FontId,
+        painter: &egui::Painter,
+    ) {
+        // Render black outline by drawing text at slightly offset positions
+        for offset in &[
+            Vec2::new(-1.0, -1.0),
+            Vec2::new(0.0, -1.0),
+            Vec2::new(1.0, -1.0),
+            Vec2::new(-1.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(-1.0, 1.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 1.0),
+        ] {
+            painter.text(
+                pos + *offset,
+                Align2::CENTER_CENTER,
+                text,
+                font_id.clone(),
+                Color32::BLACK,
+            );
+        }
+
+        // Render white text on top with center alignment
+        painter.text(
+            pos,
+            Align2::CENTER_CENTER,
+            text,
+            font_id.clone(),
+            Color32::WHITE,
+        );
     }
 
     pub fn create_layer_geometries_ordered(
@@ -583,72 +861,83 @@ impl StackRenderer {
         }
     }
 
-    /// Create text shapes for layer names with proper z-ordering
-    /// This ensures text appears on top of all other shapes
-    fn create_text_shapes(
+    /// Render dimensions with text using painter
+    fn render_dimensions_with_painter(
         &self,
-        layer_geometries: &[LayerGeometry],
+        stack: &ProcessStack,
         transform: &ViewTransform,
-    ) -> Vec<Shape> {
-        let mut shapes = Vec::new();
-
-        for geometry in layer_geometries {
-            let bounds = geometry.get_bounds();
-            let label_pos = Pos2::new(bounds.center().x, bounds.center().y);
-            let label_pos_screen = transform.world_to_screen(label_pos);
-
-            // Reduced height threshold from 15.0 to 5.0 for better visibility
-            let height_screen = bounds.height() * transform.scale;
-
-            if height_screen > 5.0 {
-                let layer_name = &geometry.layer_name;
-
-                // Improved font scaling for better visibility
-                let font_size = (10.0 + 4.0 * transform.scale).clamp(8.0, 20.0);
-
-                // Create outlined text shapes for better visibility
-                shapes.extend(self.create_outlined_text_shapes(
-                    label_pos_screen,
-                    layer_name,
-                    font_size,
-                ));
-            }
-        }
-
-        shapes
-    }
-
-    /// Create simple colored rectangles as text placeholders for layer identification
-    fn create_outlined_text_shapes(&self, pos: Pos2, text: &str, font_size: f32) -> Vec<Shape> {
-        let mut shapes = Vec::new();
-
-        // Create a more visible rectangular indicator for the layer name
-        let text_width = font_size * 0.8 * text.len() as f32;
-        let text_height = font_size * 1.5;
-
-        // Add black outline for contrast
-        let outline_rect =
-            Rect::from_center_size(pos, Vec2::new(text_width + 4.0, text_height + 4.0));
-        shapes.push(Shape::rect_filled(outline_rect, 3.0, Color32::BLACK));
-
-        // Add bright colored background to make it very visible
-        let bg_color = match text.len() % 6 {
-            0 => Color32::from_rgb(255, 255, 0),   // Yellow
-            1 => Color32::from_rgb(0, 255, 255),   // Cyan
-            2 => Color32::from_rgb(255, 0, 255),   // Magenta
-            3 => Color32::from_rgb(255, 165, 0),   // Orange
-            4 => Color32::from_rgb(144, 238, 144), // Light Green
-            _ => Color32::from_rgb(255, 192, 203), // Pink
+        viewport_rect: Rect,
+        painter: &egui::Painter,
+    ) {
+        // Choose the appropriate scaler based on mode
+        let scaler = if self.show_schematic_mode {
+            self.create_schematic_scaler(stack)
+        } else {
+            self.create_normal_scaler(stack)
         };
 
-        let main_rect = Rect::from_center_size(pos, Vec2::new(text_width, text_height));
-        shapes.push(Shape::rect_filled(main_rect, 2.0, bg_color));
+        // Create simple tick marks along the left edge
+        let ruler_color = egui::Color32::WHITE;
+        let ruler_x = viewport_rect.min.x + 1.0; // Just 1 pixel from left edge
 
-        // Add a small indicator in the center
-        let center_dot = Rect::from_center_size(pos, Vec2::new(4.0, 4.0));
-        shapes.push(Shape::rect_filled(center_dot, 1.0, Color32::BLACK));
+        // Get total stack height in world coordinates
+        let total_height = scaler.get_exaggerated_total_height(stack);
 
-        shapes
+        // Convert world coordinates to screen coordinates for ruler boundaries
+        let world_bottom = Pos2::new(0.0, 0.0); // Bottom of stack
+        let world_top = Pos2::new(0.0, -total_height); // Top of stack (negative Y)
+        let screen_bottom = transform.world_to_screen(world_bottom);
+        let screen_top = transform.world_to_screen(world_top);
+
+        // Calculate tick marks
+        let major_tick_interval = self.calculate_major_tick_interval(total_height);
+        let minor_tick_interval = major_tick_interval / 5.0;
+
+        // Draw tick marks with text labels
+        let mut current_world_z = 0.0;
+        while current_world_z <= total_height {
+            let world_pos = Pos2::new(0.0, -current_world_z);
+            let screen_pos = transform.world_to_screen(world_pos);
+
+            // Check if this position is visible
+            if screen_pos.y >= screen_top.y && screen_pos.y <= screen_bottom.y {
+                let is_major_tick = (current_world_z / major_tick_interval).round()
+                    * major_tick_interval
+                    == current_world_z;
+
+                if is_major_tick {
+                    // Major tick mark (longer line)
+                    let tick_start = Pos2::new(ruler_x, screen_pos.y);
+                    let tick_end = Pos2::new(ruler_x + 15.0, screen_pos.y);
+                    painter
+                        .line_segment([tick_start, tick_end], egui::Stroke::new(2.0, ruler_color));
+
+                    // Add text label for major ticks
+                    let label = format!("{current_world_z:.1}μm");
+                    let text_pos = Pos2::new(ruler_x + 20.0, screen_pos.y);
+                    let font_id = FontId::monospace(10.0);
+
+                    // Add small background for text readability
+                    painter.rect_filled(
+                        Rect::from_center_size(text_pos, Vec2::new(30.0, 14.0)),
+                        2.0,
+                        Color32::from_black_alpha(120),
+                    );
+
+                    painter.text(text_pos, Align2::LEFT_CENTER, label, font_id, ruler_color);
+                } else if (current_world_z / minor_tick_interval).round() * minor_tick_interval
+                    == current_world_z
+                {
+                    // Minor tick mark (shorter line)
+                    let tick_start = Pos2::new(ruler_x, screen_pos.y);
+                    let tick_end = Pos2::new(ruler_x + 8.0, screen_pos.y);
+                    painter
+                        .line_segment([tick_start, tick_end], egui::Stroke::new(1.0, ruler_color));
+                }
+            }
+
+            current_world_z += minor_tick_interval;
+        }
     }
 
     pub fn set_layer_width(&mut self, width: f32) {
@@ -1713,9 +2002,7 @@ mod tests {
             let tolerance = 10.0; // Screen pixels tolerance
             assert!(
                 (spacing1 - spacing2).abs() < tolerance,
-                "Via spacings should be approximately equal: {} vs {}",
-                spacing1,
-                spacing2
+                "Via spacings should be approximately equal: {spacing1} vs {spacing2}"
             );
         }
 
@@ -1800,9 +2087,7 @@ mod tests {
             let via_width = via_geom.get_bounds().width();
             assert!(
                 via_width <= expected_max_width_screen + 1.0, // Small tolerance for floating point
-                "Via width {} exceeds maximum allowed width {} (metal constraint)",
-                via_width,
-                expected_max_width_screen
+                "Via width {via_width} exceeds maximum allowed width {expected_max_width_screen} (metal constraint)"
             );
         }
 
@@ -1812,9 +2097,7 @@ mod tests {
             let via_width = via_geom.get_bounds().width();
             assert!(
                 via_width >= min_reasonable_width,
-                "Via width {} is too small (should be at least {})",
-                via_width,
-                min_reasonable_width
+                "Via width {via_width} is too small (should be at least {min_reasonable_width})"
             );
         }
     }

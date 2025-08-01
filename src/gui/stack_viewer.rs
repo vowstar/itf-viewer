@@ -46,16 +46,16 @@ impl StackViewer {
                 self.handle_keyboard_input(ui);
 
                 if let Some(stack) = stack {
-                    // Render the stack
-                    let shapes = self
-                        .renderer
-                        .render_stack(stack, &self.transform, viewport_rect);
-
-                    // Add shapes to the painter (layer names are now included in shapes for proper z-order)
+                    // Get painter for the viewport
                     let painter = ui.painter_at(viewport_rect);
-                    for shape in shapes {
-                        painter.add(shape);
-                    }
+
+                    // Render the stack with text using painter
+                    self.renderer.render_stack_with_painter(
+                        stack,
+                        &self.transform,
+                        viewport_rect,
+                        &painter,
+                    );
 
                     // Handle layer selection via mouse click
                     if response.clicked() {
