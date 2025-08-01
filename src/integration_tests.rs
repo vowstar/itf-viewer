@@ -219,18 +219,29 @@ mod tests {
         // Create VIA geometries
         let via_geometries =
             renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
-        assert_eq!(via_geometries.len(), 3); // 3 VIAs
+        assert_eq!(via_geometries.len(), 9); // 3 VIA connections * 3 positions each = 9 geometries
 
         // Test that VIAs connect the right layers
         for via_geom in &via_geometries {
-            match via_geom.layer_name.as_str() {
+            // Extract base name by removing the last _N suffix
+            let base_name = if let Some(last_underscore) = via_geom.layer_name.rfind('_') {
+                if via_geom.layer_name[last_underscore + 1..].chars().all(|c| c.is_numeric()) {
+                    &via_geom.layer_name[..last_underscore]
+                } else {
+                    &via_geom.layer_name
+                }
+            } else {
+                &via_geom.layer_name
+            };
+            match base_name {
                 "via_m1_m2" | "via_alt_m1_m2" => {
                     let metal1_bounds = layer_boundaries.get("metal1").unwrap();
                     let metal2_bounds = layer_boundaries.get("metal2").unwrap();
 
-                    // VIA should span from metal1 surface to metal2 surface
-                    let expected_start = metal1_bounds.1; // Top of metal1
-                    let expected_end = metal2_bounds.0; // Bottom of metal2
+                    // VIA should span from metal1 to metal2
+                    // With embedded stacking: metal1 is above metal2, so connect bottom of metal1 to top of metal2
+                    let expected_start = metal1_bounds.0; // Bottom of metal1
+                    let expected_end = metal2_bounds.1; // Top of metal2
 
                     assert!(
                         (via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6,
@@ -251,9 +262,10 @@ mod tests {
                     let metal2_bounds = layer_boundaries.get("metal2").unwrap();
                     let metal3_bounds = layer_boundaries.get("metal3").unwrap();
 
-                    // VIA should span from metal2 surface to metal3 surface
-                    let expected_start = metal2_bounds.1; // Top of metal2
-                    let expected_end = metal3_bounds.0; // Bottom of metal3
+                    // VIA should span from metal2 to metal3  
+                    // With embedded stacking: metal2 is above metal3, so connect bottom of metal2 to top of metal3
+                    let expected_start = metal2_bounds.0; // Bottom of metal2
+                    let expected_end = metal3_bounds.1; // Top of metal3
 
                     assert!(
                         (via_geom.z_bottom - expected_start.min(expected_end)).abs() < 1e-6,
@@ -277,11 +289,11 @@ mod tests {
         // Test horizontal offset for multiple VIAs between same layers
         let via_m1_m2_1 = via_geometries
             .iter()
-            .find(|v| v.layer_name == "via_m1_m2")
+            .find(|v| v.layer_name.starts_with("via_m1_m2_"))
             .unwrap();
         let via_m1_m2_2 = via_geometries
             .iter()
-            .find(|v| v.layer_name == "via_alt_m1_m2")
+            .find(|v| v.layer_name.starts_with("via_alt_m1_m2_"))
             .unwrap();
 
         let bounds1 = via_m1_m2_1.get_bounds();
@@ -372,8 +384,7 @@ mod tests {
         // Should complete quickly (less than 100ms for 10 renders)
         assert!(
             duration.as_millis() < 100,
-            "Rendering should be fast, took {:?}",
-            duration
+            "Rendering should be fast, took {duration:?}"
         );
     }
 }

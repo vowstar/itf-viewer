@@ -113,7 +113,7 @@ impl ItfParser {
                     Ok(warnings) => {
                         // Print warnings for missing layer references but continue
                         for warning in warnings {
-                            eprintln!("Warning: {}", warning);
+                            eprintln!("Warning: {warning}");
                         }
                     }
                     Err(e) => {

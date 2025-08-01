@@ -118,10 +118,7 @@ impl ProcessStack {
         }
 
         for layer_name in missing_layers {
-            eprintln!(
-                "Info: Auto-creating missing layer '{}' (200% thickness)",
-                layer_name
-            );
+            eprintln!("Info: Auto-creating missing layer '{layer_name}' (200% thickness)");
             self.create_missing_layer(&layer_name);
         }
     }

@@ -59,6 +59,10 @@ impl LayerPanel {
                             if let Some(ref selected_name) = self.selected_layer {
                                 if let Some(layer) = stack.get_layer(selected_name) {
                                     self.show_layer_details(ui, layer);
+                                } else if let Some(via) =
+                                    stack.via_stack.iter().find(|v| &v.name == selected_name)
+                                {
+                                    self.show_via_details(ui, via);
                                 }
                             }
                         });
@@ -112,8 +116,8 @@ impl LayerPanel {
                     };
 
                     let layer_icon = match layer.layer_type() {
-                        LayerType::Conductor => "⚡",
-                        LayerType::Dielectric => "▒",
+                        LayerType::Conductor => "C",
+                        LayerType::Dielectric => "D",
                     };
 
                     let layer_text = format!(
@@ -138,6 +142,36 @@ impl LayerPanel {
                     }
                 }
             });
+
+        // Show via connections
+        if !stack.via_stack.is_empty() {
+            CollapsingHeader::new("Via Connections")
+                .default_open(true)
+                .show(ui, |ui| {
+                    for via in stack.via_stack.iter() {
+                        let via_color = Color32::from_rgb(192, 192, 192);
+                        let via_text = format!(
+                            "V {} -> {} ({:.2} um^2)",
+                            via.from_layer, via.to_layer, via.area
+                        );
+
+                        let is_selected = self.selected_layer.as_deref() == Some(&via.name);
+                        let response = ui.selectable_label(
+                            is_selected,
+                            RichText::new(via_text).color(via_color),
+                        );
+
+                        if response.clicked() {
+                            if is_selected {
+                                self.selected_layer = None;
+                            } else {
+                                self.selected_layer = Some(via.name.clone());
+                                *layer_selected = Some(via.name.clone());
+                            }
+                        }
+                    }
+                });
+        }
     }
 
     fn show_layer_details(&self, ui: &mut egui::Ui, layer: &Layer) {
@@ -335,6 +369,31 @@ impl LayerPanel {
 
     pub fn get_selected_layer(&self) -> Option<&String> {
         self.selected_layer.as_ref()
+    }
+
+    fn show_via_details(&self, ui: &mut egui::Ui, via: &crate::data::ViaConnection) {
+        CollapsingHeader::new(format!("Via Details: {}", via.name))
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.label("Type: Via Connection");
+                ui.label(format!("From layer: {}", via.from_layer));
+                ui.label(format!("To layer: {}", via.to_layer));
+                ui.label(format!("Area: {:.6} um^2", via.area));
+                ui.label(format!("Width: {:.6} um", via.get_via_width()));
+                ui.label(format!("Height: {:.6} um", via.height));
+                ui.label(format!("Z position: {:.6} um", via.z_position));
+                ui.label(format!(
+                    "Resistance per via: {:.3} ohm",
+                    via.resistance_per_via
+                ));
+                ui.label(format!("Via type: {:?}", via.get_via_type()));
+
+                if via.is_contact_via() {
+                    ui.label("Contact via (connects to substrate/diffusion)");
+                } else if via.is_metal_via() {
+                    ui.label("Metal via (connects metal layers)");
+                }
+            });
     }
 
     pub fn toggle_visibility(&mut self) {

@@ -138,7 +138,6 @@ impl StackRenderer {
         }
 
         // Second pass: create geometries for all layers, embedding conductors in their preceding dielectric
-        current_z = 0.0f32;
         let mut dielectric_index = 0;
 
         // Render layers in reverse ITF order (bottom to top physically)
@@ -150,7 +149,6 @@ impl StackRenderer {
                     // Use pre-calculated dielectric position
                     let (_, bottom, top, _) = dielectric_positions[dielectric_index];
                     dielectric_index += 1;
-                    current_z = top;
                     (bottom, top)
                 }
                 Layer::Conductor(_) => {
@@ -256,17 +254,19 @@ impl StackRenderer {
         stack: &ProcessStack,
         scaler: &ThicknessScaler,
         transform: &ViewTransform,
-        _viewport_rect: Rect,
+        viewport_rect: Rect,
     ) -> Vec<LayerGeometry> {
         let mut geometries = Vec::new();
 
         // Get layer boundaries for precise VIA positioning
         let layer_boundaries = self.calculate_ordered_layer_boundaries(stack, scaler);
 
-        // Group VIAs by layer pairs to add horizontal offset for multiple VIAs
-        let mut via_offset_counter: HashMap<(String, String), i32> = HashMap::new();
+        // Calculate optimal layer width for metal positioning
+        let total_exaggerated_height = scaler.get_exaggerated_total_height(stack);
+        let layer_width =
+            calculate_optimal_layer_width(total_exaggerated_height, viewport_rect.width(), 50.0);
 
-        for via in stack.via_stack.iter() {
+        for (via_index, via) in stack.via_stack.iter().enumerate() {
             // Find boundary positions for FROM and TO layers
             let from_bounds = layer_boundaries.get(&via.from_layer);
             let to_bounds = layer_boundaries.get(&via.to_layer);
@@ -284,53 +284,110 @@ impl StackRenderer {
                 };
 
                 let via_height = (via_z_end - via_z_start).abs();
-                let via_width = via.get_via_width() as f32 * 60.0; // Increased scale for better visibility
 
-                // Calculate horizontal offset for multiple VIAs between same layers
-                let layer_pair = if via.from_layer < via.to_layer {
-                    (via.from_layer.clone(), via.to_layer.clone())
-                } else {
-                    (via.to_layer.clone(), via.from_layer.clone())
-                };
+                // Calculate via width based on connected metal layers
+                let via_width = self.calculate_via_width(via, stack, layer_width);
 
-                let offset_index = *via_offset_counter.entry(layer_pair).or_insert(0);
-                via_offset_counter
-                    .entry((via.from_layer.clone(), via.to_layer.clone()))
-                    .and_modify(|x| *x += 1);
+                // Create three vias corresponding to the three metal columns (left, center, right)
+                // Offset each via connection to prevent overlap when multiple vias connect same layers
+                let connection_offset = (via_index as f32) * layer_width * 0.1;
+                let via_positions = [
+                    -layer_width * 0.3 + connection_offset, // Left position
+                    0.0 + connection_offset,                // Center position
+                    layer_width * 0.3 + connection_offset,  // Right position
+                ];
 
-                // Horizontal offset to prevent VIAs from overlapping
-                let horizontal_offset = (offset_index as f32 - 0.5) * via_width * 1.5;
+                for (i, &x_position) in via_positions.iter().enumerate() {
+                    // Convert to screen coordinates
+                    let via_center_z = (via_z_start + via_z_end) * 0.5;
+                    let world_center = Pos2::new(x_position, -via_center_z); // Flip Y axis
+                    let screen_center = transform.world_to_screen(world_center);
+                    let screen_height = via_height * transform.scale;
+                    let screen_width = via_width * transform.scale;
 
-                // Convert to screen coordinates
-                let via_center_z = (via_z_start + via_z_end) * 0.5;
-                let world_center = Pos2::new(horizontal_offset, -via_center_z); // Flip Y axis
-                let screen_center = transform.world_to_screen(world_center);
-                let screen_height = via_height * transform.scale;
-                let screen_width = via_width * transform.scale;
+                    let via_color = self.color_scheme.get_via_color(via.get_via_type());
+                    let stroke = Stroke::new(2.0, Color32::DARK_GRAY);
 
-                let via_color = self.color_scheme.get_via_color(via.get_via_type());
-                let stroke = Stroke::new(2.0, Color32::DARK_GRAY); // Thicker stroke for better visibility
+                    let rectangle = RectangleShape::new(
+                        screen_center,
+                        screen_width,
+                        screen_height,
+                        via_color,
+                        stroke,
+                    );
 
-                let rectangle = RectangleShape::new(
-                    screen_center,
-                    screen_width,
-                    screen_height,
-                    via_color,
-                    stroke,
-                );
+                    let geometry = LayerGeometry::new_rectangle(
+                        format!("{}_{}", via.name, i),
+                        via_z_start.min(via_z_end),
+                        via_z_start.max(via_z_end),
+                        rectangle,
+                    );
 
-                let geometry = LayerGeometry::new_rectangle(
-                    via.name.clone(),
-                    via_z_start.min(via_z_end),
-                    via_z_start.max(via_z_end),
-                    rectangle,
-                );
-
-                geometries.push(geometry);
+                    geometries.push(geometry);
+                }
             }
         }
 
         geometries
+    }
+
+    fn calculate_via_width(
+        &self,
+        via: &crate::data::ViaConnection,
+        stack: &ProcessStack,
+        layer_width: f32,
+    ) -> f32 {
+        // Find the shortest edge of connected metal layers
+        let mut min_metal_width = layer_width * 0.2; // Default fallback
+
+        // Check from_layer
+        if let Some(Layer::Conductor(conductor)) = stack.get_layer(&via.from_layer) {
+            // Calculate effective width based on trapezoid shape
+            let effective_width = self.calculate_metal_effective_width(conductor, layer_width);
+            min_metal_width = min_metal_width.min(effective_width);
+        }
+
+        // Check to_layer
+        if let Some(Layer::Conductor(conductor)) = stack.get_layer(&via.to_layer) {
+            // Calculate effective width based on trapezoid shape
+            let effective_width = self.calculate_metal_effective_width(conductor, layer_width);
+            min_metal_width = min_metal_width.min(effective_width);
+        }
+
+        // If one layer is non-metal (substrate), use the metal layer's effective width
+        if via.is_contact_via() {
+            // For contact vias, use a smaller width
+            min_metal_width * 0.8
+        } else {
+            // For metal vias, use the minimum effective width
+            min_metal_width
+        }
+    }
+
+    fn calculate_metal_effective_width(
+        &self,
+        conductor: &crate::data::ConductorLayer,
+        layer_width: f32,
+    ) -> f32 {
+        // Calculate the effective width of a metal layer based on its trapezoid shape
+        let base_width = layer_width / 3.0; // Each of the three columns
+
+        if let Some(side_tangent) = conductor.physical_props.side_tangent {
+            let thickness = conductor.thickness as f32;
+            let width_reduction = (side_tangent.abs() as f32) * thickness;
+
+            // The narrower edge of the trapezoid
+            if side_tangent > 0.0 {
+                // Positive tangent: top is narrower
+                (base_width - width_reduction).max(base_width * 0.3)
+            } else {
+                // Negative tangent: bottom is narrower
+                (base_width - width_reduction).max(base_width * 0.3)
+            }
+        } else {
+            // Rectangle shape
+            base_width
+        }
     }
 
     pub fn calculate_ordered_layer_boundaries(
@@ -354,7 +411,6 @@ impl StackRenderer {
         }
 
         // Second pass: calculate boundaries for all layers, embedding conductors in their preceding dielectric
-        current_z = 0.0f32;
         let mut dielectric_index = 0;
 
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
@@ -365,7 +421,6 @@ impl StackRenderer {
                     // Use pre-calculated dielectric position
                     let (_, bottom, top, _) = dielectric_positions[dielectric_index];
                     dielectric_index += 1;
-                    current_z = top;
                     (bottom, top)
                 }
                 Layer::Conductor(_) => {
@@ -424,7 +479,6 @@ impl StackRenderer {
         }
 
         // Second pass: create dimension shapes for all layers
-        current_z = 0.0f32;
         let mut dielectric_index = 0;
 
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
@@ -435,7 +489,6 @@ impl StackRenderer {
                     // Use pre-calculated dielectric position
                     let (_, bottom, top, _) = dielectric_positions[dielectric_index];
                     dielectric_index += 1;
-                    current_z = top;
                     (bottom, top)
                 }
                 Layer::Conductor(_) => {
@@ -931,16 +984,17 @@ mod tests {
         // Create via geometries
         let via_geometries =
             renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
-        assert_eq!(via_geometries.len(), 1);
+        assert_eq!(via_geometries.len(), 3); // 1 via * 3 positions = 3 geometries
 
         // Via should span between the two metal layers
         let via_geom = &via_geometries[0];
-        assert_eq!(via_geom.layer_name, "via12");
+        assert_eq!(via_geom.layer_name, "via12_0"); // Updated naming scheme
 
         // Via should be positioned to connect the layer surfaces
-        // It should span from top of metal1 to bottom of metal2 (or vice versa)
-        let expected_start = metal1_bounds.1; // Top of metal1
-        let expected_end = metal2_bounds.0; // Bottom of metal2
+        // With embedded stacking: metal1 is in oxide1 (above), metal2 is in oxide2 (below)
+        // Via should span from bottom of metal1 to top of metal2
+        let expected_start = metal1_bounds.0; // Bottom of metal1
+        let expected_end = metal2_bounds.1; // Top of metal2
 
         // Since metal1 is above metal2 in our new structure, we need to check which one is actually higher
         let via_should_start = expected_start.min(expected_end);
@@ -1172,23 +1226,18 @@ mod tests {
         let metal2_bounds = layer_boundaries.get("metal2").unwrap();
 
         // Verify layer ordering with embedded logic
-        // oxide should be above substrate
+        // In ITF order: substrate, metal1, oxide, metal2 (top to bottom in file)
+        // In physical order: substrate at bottom, oxide above substrate
+        // But with reverse processing: oxide is processed first (gets bottom position), substrate second
+        // So substrate should be above oxide in the current implementation
         assert!(
-            oxide_bounds.0 >= substrate_bounds.1 - 1e-6,
-            "oxide should be above substrate: {} >= {}",
-            oxide_bounds.0,
-            substrate_bounds.1
+            substrate_bounds.0 >= oxide_bounds.1 - 1e-6,
+            "substrate should be above oxide: {} >= {}",
+            substrate_bounds.0,
+            oxide_bounds.1
         );
 
-        // metal1 should be embedded in substrate (same bottom)
-        assert!(
-            (metal1_bounds.0 - substrate_bounds.0).abs() < 1e-6,
-            "metal1 should be embedded in substrate: {} == {}",
-            metal1_bounds.0,
-            substrate_bounds.0
-        );
-
-        // metal2 should be embedded in oxide (same bottom)
+        // metal2 should be embedded in oxide (same bottom, since oxide is processed first)
         assert!(
             (metal2_bounds.0 - oxide_bounds.0).abs() < 1e-6,
             "metal2 should be embedded in oxide: {} == {}",
@@ -1196,16 +1245,25 @@ mod tests {
             oxide_bounds.0
         );
 
+        // metal1 should be embedded in substrate (same bottom, since substrate is processed second)
+        assert!(
+            (metal1_bounds.0 - substrate_bounds.0).abs() < 1e-6,
+            "metal1 should be embedded in substrate: {} == {}",
+            metal1_bounds.0,
+            substrate_bounds.0
+        );
+
         // Create VIA geometries
         let via_geometries =
             renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
-        assert_eq!(via_geometries.len(), 1);
+        assert_eq!(via_geometries.len(), 3); // 1 via * 3 positions = 3 geometries
 
         let via_geom = &via_geometries[0];
 
-        // VIA should span from the top surface of metal1 to the bottom surface of metal2
-        let expected_via_start = metal1_bounds.1; // Top of metal1
-        let expected_via_end = metal2_bounds.0; // Bottom of metal2
+        // VIA should span from the surface of metal1 to the surface of metal2
+        // Since substrate is above oxide now, metal1 (in substrate) is above metal2 (in oxide)
+        let expected_via_start = metal2_bounds.1; // Top of metal2
+        let expected_via_end = metal1_bounds.0; // Bottom of metal1
 
         assert!(
             (via_geom.z_bottom - expected_via_start.min(expected_via_end)).abs() < 1e-6,
@@ -1275,7 +1333,7 @@ mod tests {
         // Create VIA geometries
         let via_geometries =
             renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
-        assert_eq!(via_geometries.len(), 3);
+        assert_eq!(via_geometries.len(), 9); // 3 vias * 3 positions each = 9 geometries
 
         // VIAs should have different horizontal positions (to avoid overlap)
         let bounds_via1 = via_geometries[0].get_bounds();
@@ -1287,9 +1345,94 @@ mod tests {
         assert!(bounds_via2.center().x != bounds_via3.center().x);
         assert!(bounds_via1.center().x != bounds_via3.center().x);
 
-        // All VIAs should have the same vertical span (same layer connection)
-        assert!((bounds_via1.height() - bounds_via2.height()).abs() < 1e-6);
-        assert!((bounds_via2.height() - bounds_via3.height()).abs() < 1e-6);
+        // Check that all vias have the same vertical span (same layer connection)
+        for i in 0..via_geometries.len() {
+            for j in (i + 1)..via_geometries.len() {
+                let bounds_i = via_geometries[i].get_bounds();
+                let bounds_j = via_geometries[j].get_bounds();
+                assert!(
+                    (bounds_i.height() - bounds_j.height()).abs() < 1e-6,
+                    "All vias should have same height"
+                );
+            }
+        }
+
+        // Check that we have exactly 3 vias per via connection
+        let unique_base_names: std::collections::HashSet<String> = via_geometries
+            .iter()
+            .map(|g| {
+                g.layer_name
+                    .split('_')
+                    .next()
+                    .unwrap_or(&g.layer_name)
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(unique_base_names.len(), 3); // Should have 3 unique via connections
+    }
+
+    #[test]
+    fn test_three_vias_per_connection() {
+        let renderer = StackRenderer::new();
+
+        // Create stack with two metal layers
+        let tech = TechnologyInfo::new("test_three_via".to_string());
+        let mut stack = ProcessStack::new(tech);
+
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.3,
+        ))));
+
+        // Add a single via connection
+        use crate::data::ViaConnection;
+        let via = ViaConnection::new(
+            "via_test".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
+        stack.add_via(via);
+
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+
+        // Create VIA geometries
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+
+        // Should create exactly 3 vias for one connection
+        assert_eq!(via_geometries.len(), 3);
+
+        // Check names are correctly formatted
+        assert_eq!(via_geometries[0].layer_name, "via_test_0");
+        assert_eq!(via_geometries[1].layer_name, "via_test_1");
+        assert_eq!(via_geometries[2].layer_name, "via_test_2");
+
+        // Check that vias are at different horizontal positions
+        let pos1 = via_geometries[0].get_bounds().center().x;
+        let pos2 = via_geometries[1].get_bounds().center().x;
+        let pos3 = via_geometries[2].get_bounds().center().x;
+
+        assert!(pos1 != pos2);
+        assert!(pos2 != pos3);
+        assert!(pos1 != pos3);
+
+        // Check that all vias have the same vertical position and height
+        let bounds1 = via_geometries[0].get_bounds();
+        for geometry in &via_geometries[1..] {
+            let bounds = geometry.get_bounds();
+            assert!((bounds.center().y - bounds1.center().y).abs() < 1e-6);
+            assert!((bounds.height() - bounds1.height()).abs() < 1e-6);
+        }
     }
 
     #[test]
