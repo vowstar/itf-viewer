@@ -33,14 +33,12 @@ impl LayerPanel {
                 ui.separator();
 
                 if let Some(stack) = stack {
-                    ScrollArea::vertical()
-                        .id_salt("layer_list")
-                        .show(ui, |ui| {
-                            self.show_process_summary(ui, stack);
-                            ui.separator();
+                    ScrollArea::vertical().id_salt("layer_list").show(ui, |ui| {
+                        self.show_process_summary(ui, stack);
+                        ui.separator();
 
-                            self.show_layer_list(ui, stack, &mut layer_selected);
-                        });
+                        self.show_layer_list(ui, stack, &mut layer_selected);
+                    });
                 } else {
                     ui.centered_and_justified(|ui| {
                         ui.label("No ITF file loaded");

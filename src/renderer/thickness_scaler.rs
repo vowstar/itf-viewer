@@ -104,7 +104,7 @@ impl ThicknessScaler {
                 let target_ratio = self.min_ratio + normalized * (self.max_ratio - self.min_ratio);
 
                 // Convert the ratio to an actual thickness
-                // In schematic mode, we want consistent layer heights based on the ratio
+                // In schematic mode, we want consistent layer heights based on the ratio relative to max thickness
                 let base_thickness = max_thick; // Use max thickness as reference
                 base_thickness * target_ratio
             }
@@ -317,15 +317,16 @@ mod tests {
         let mut scaler = ThicknessScaler::new();
         let stack = create_test_stack_varied_thickness();
         scaler.analyze_stack(&stack);
+        scaler.set_schematic_mode(0.1, 2.0);
 
         // Test boundary conditions
         let thin_exaggerated = scaler.get_exaggerated_thickness(0.1); // Thinnest
         let thick_exaggerated = scaler.get_exaggerated_thickness(2.0); // Thickest
 
-        // Thinnest should be scaled to 30% of original
-        assert!((thin_exaggerated - 0.1 * 0.3).abs() < 1e-6);
+        // Thinnest should be scaled to 30% of max thickness (2.0 * 0.3 = 0.6)
+        assert!((thin_exaggerated - 2.0 * 0.3).abs() < 1e-6);
 
-        // Thickest should be scaled to 100% of original
+        // Thickest should be scaled to 100% of max thickness (2.0 * 1.0 = 2.0)
         assert!((thick_exaggerated - 2.0 * 1.0).abs() < 1e-6);
 
         // Middle values should be proportionally scaled

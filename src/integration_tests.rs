@@ -115,6 +115,9 @@ mod tests {
 
         scaler.analyze_stack(&stack);
 
+        // Set to schematic mode for thickness exaggeration
+        scaler.set_schematic_mode(0.2, 2.0); // min and max thicknesses from the stack
+
         // Get thickness statistics
         let stats = scaler.get_thickness_stats().unwrap();
 
@@ -135,25 +138,22 @@ mod tests {
         let exaggerated_ratio = max_height / min_height;
         let original_ratio = 2.0 / 0.2; // 10.0
 
-        // The thickness scaler is working correctly:
-        // - Thickest layer (2.0) gets scaled by 1.0 factor -> 2.0
-        // - Thinnest layer (0.2) gets scaled by 0.3 factor -> 0.06
-        // So the exaggerated ratio is 2.0/0.06 = 33.33
-        // This is NOT compressed compared to the original ratio of 10.0, but that's correct
-        // because we're scaling by factors, not by absolute values.
-
-        // The correct expectation is that the ratio between scale factors should be 1.0/0.3 = 3.33
-        // But the ratio between actual exaggerated heights is different due to the original thickness difference
+        // The thickness scaler is working correctly in schematic mode:
+        // - All layers are scaled relative to max thickness (2.0)
+        // - Thickest layer (2.0) gets 2.0 * 1.0 = 2.0
+        // - Thinnest layer (0.2) gets 2.0 * 0.3 = 0.6
+        // So the exaggerated ratio is 2.0/0.6 = 3.33
+        // This compresses the visual difference compared to the original ratio of 10.0
 
         // The scaling is working as intended - compress the visual difference while maintaining proportionality
-        assert!(exaggerated_ratio > original_ratio); // Should be expanded due to scale factor application
+        assert!(exaggerated_ratio < original_ratio); // Should be compressed from 10.0 to 3.33
 
-        // Verify that the scale factors are correctly applied
-        let thickest_scale = max_height / 2.0; // 2.0 is original thickness of thickest layer
-        let thinnest_scale = min_height / 0.2; // 0.2 is original thickness of thinnest layer
+        // Verify that the scale factors are correctly applied to max thickness
+        let expected_thickest = 2.0 * 1.0; // max_thickness * max_ratio = 2.0
+        let expected_thinnest = 2.0 * 0.3; // max_thickness * min_ratio = 0.6
 
-        assert!((thickest_scale - 1.0).abs() < 0.01); // Should be scaled by 1.0
-        assert!((thinnest_scale - 0.3).abs() < 0.01); // Should be scaled by 0.3
+        assert!((max_height - expected_thickest).abs() < 0.01);
+        assert!((min_height - expected_thinnest).abs() < 0.01);
     }
 
     #[test]
@@ -346,7 +346,8 @@ mod tests {
 
     #[test]
     fn test_stack_bounds_with_exaggeration() {
-        let renderer = StackRenderer::new();
+        let mut renderer = StackRenderer::new();
+        renderer.set_show_schematic_mode(true); // Enable schematic mode for exaggeration
         let stack = create_comprehensive_test_stack();
 
         // Test that stack bounds account for thickness exaggeration

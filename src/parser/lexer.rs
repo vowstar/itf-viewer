@@ -8,8 +8,8 @@ use nom::{
     combinator::{map, opt, recognize, value},
     multi::{separated_list0, separated_list1},
     number::complete::double,
-    sequence::{delimited, preceded, terminated, tuple},
-    IResult,
+    sequence::{delimited, preceded, terminated},
+    IResult, Parser,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +64,8 @@ impl<'a> ItfLexer<'a> {
             |i| self.parse_keyword_or_identifier(i),
             |i| self.parse_string(i),
             |i| self.parse_symbol(i),
-        ))(input)
+        ))
+        .parse(input)
     }
 
     fn parse_comment(&self, input: &'a str) -> IResult<&'a str, Token> {
@@ -85,7 +86,8 @@ impl<'a> ItfLexer<'a> {
                     |comment: &str| Token::Comment(comment.trim().to_string()),
                 ),
             ),
-        ))(input)
+        ))
+        .parse(input)
     }
 
     fn parse_whitespace(&self, input: &'a str) -> IResult<&'a str, Token> {
@@ -96,7 +98,8 @@ impl<'a> ItfLexer<'a> {
                 take_while1(|c: char| c.is_whitespace() && c != '\n'),
                 |_| Token::Newline,
             ),
-        ))(input)
+        ))
+        .parse(input)
     }
 
     fn parse_keyword_or_identifier(&self, input: &'a str) -> IResult<&'a str, Token> {
@@ -110,26 +113,28 @@ impl<'a> ItfLexer<'a> {
                     Token::Identifier(s.to_string())
                 }
             },
-        )(input)
+        )
+        .parse(input)
     }
 
     fn parse_number(&self, input: &'a str) -> IResult<&'a str, Token> {
         map(
-            recognize(tuple((
+            recognize((
                 opt(alt((char('+'), char('-')))),
                 alt((
-                    recognize(tuple((digit1, char('.'), opt(digit1)))),
-                    recognize(tuple((opt(digit1), char('.'), digit1))),
+                    recognize((digit1, char('.'), opt(digit1))),
+                    recognize((opt(digit1), char('.'), digit1)),
                     digit1,
                 )),
-                opt(tuple((
+                opt((
                     alt((char('e'), char('E'))),
                     opt(alt((char('+'), char('-')))),
                     digit1,
-                ))),
-            ))),
+                )),
+            )),
             |num_str: &str| Token::Number(num_str.parse::<f64>().unwrap_or(0.0)),
-        )(input)
+        )
+        .parse(input)
     }
 
     fn parse_string(&self, input: &'a str) -> IResult<&'a str, Token> {
@@ -144,7 +149,8 @@ impl<'a> ItfLexer<'a> {
                 map(take_until("'"), |s: &str| Token::String(s.to_string())),
                 char('\''),
             ),
-        ))(input)
+        ))
+        .parse(input)
     }
 
     fn parse_symbol(&self, input: &'a str) -> IResult<&'a str, Token> {
@@ -152,7 +158,8 @@ impl<'a> ItfLexer<'a> {
             value(Token::LeftBrace, char('{')),
             value(Token::RightBrace, char('}')),
             value(Token::Equals, char('=')),
-        ))(input)
+        ))
+        .parse(input)
     }
 
     fn is_keyword(&self, word: &str) -> bool {
@@ -234,7 +241,8 @@ pub fn parse_number_list(input: &str) -> IResult<&str, Vec<f64>> {
             ),
             preceded(multispace0, nom_char('}')),
         ),
-    )(input)
+    )
+    .parse(input)
 }
 
 pub fn parse_2d_number_matrix(input: &str) -> IResult<&str, Vec<Vec<f64>>> {
@@ -249,7 +257,8 @@ pub fn parse_2d_number_matrix(input: &str) -> IResult<&str, Vec<Vec<f64>>> {
             ),
             preceded(multispace0, char('}')),
         ),
-    )(input)
+    )
+    .parse(input)
 }
 
 pub fn parse_identifier(input: &str) -> IResult<&str, String> {
@@ -259,23 +268,24 @@ pub fn parse_identifier(input: &str) -> IResult<&str, String> {
             take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '+' || c == '-'),
             |s: &str| s.to_string(),
         ),
-    )(input)
+    )
+    .parse(input)
 }
 
 pub fn parse_keyword(keyword: &str) -> impl Fn(&str) -> IResult<&str, ()> + '_ {
-    move |input: &str| preceded(multispace0, value((), tag(keyword)))(input)
+    move |input: &str| preceded(multispace0, value((), tag(keyword))).parse(input)
 }
 
 pub fn parse_equals(input: &str) -> IResult<&str, ()> {
-    preceded(multispace0, value((), char('=')))(input)
+    preceded(multispace0, value((), char('='))).parse(input)
 }
 
 pub fn parse_left_brace(input: &str) -> IResult<&str, ()> {
-    preceded(multispace0, value((), char('{')))(input)
+    preceded(multispace0, value((), char('{'))).parse(input)
 }
 
 pub fn parse_right_brace(input: &str) -> IResult<&str, ()> {
-    preceded(multispace0, value((), char('}')))(input)
+    preceded(multispace0, value((), char('}'))).parse(input)
 }
 
 #[cfg(test)]

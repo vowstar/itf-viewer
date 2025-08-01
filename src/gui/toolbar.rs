@@ -309,6 +309,7 @@ mod tests {
                 ToolbarAction::SetLayerWidth(_) => {}
                 ToolbarAction::ToggleDimensions(_) => {}
                 ToolbarAction::ToggleLayerNames(_) => {}
+                ToolbarAction::ToggleSchematicMode(_) => {}
             }
         }
     }

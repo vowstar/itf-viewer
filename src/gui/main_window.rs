@@ -420,7 +420,7 @@ mod tests {
 
         // Skip OpenFile test to avoid opening system file browser during automated tests
         // Instead, test file loading directly using a test file
-        window.load_file_from_path(PathBuf::from("tests/data/real_world_test.itf"));
+        window.load_file_from_path(PathBuf::from("tests/data/complex_test.itf"));
         assert!(window.has_loaded_file());
 
         // Test reset view action (should not panic)
