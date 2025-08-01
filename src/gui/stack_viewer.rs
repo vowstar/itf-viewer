@@ -3,9 +3,7 @@
 
 use crate::data::ProcessStack;
 use crate::renderer::{StackRenderer, ViewTransform};
-use egui::{
-    CentralPanel, Color32, Context, CursorIcon, Frame, Pos2, Rect, Sense, Vec2,
-};
+use egui::{CentralPanel, Color32, Context, CursorIcon, Frame, Pos2, Sense, Vec2};
 
 pub struct StackViewer {
     renderer: StackRenderer,
@@ -130,7 +128,7 @@ impl StackViewer {
         } else {
             CursorIcon::Default
         };
-        
+
         ui.output_mut(|output| output.cursor_icon = cursor_icon);
     }
 
@@ -285,7 +283,6 @@ impl StackViewer {
     pub fn get_visible_bounds(&self) -> egui::Rect {
         self.transform.get_visible_world_bounds()
     }
-
 }
 
 impl Default for StackViewer {

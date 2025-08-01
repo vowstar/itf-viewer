@@ -577,7 +577,7 @@ impl StackRenderer {
 
             // Reduced height threshold from 15.0 to 5.0 for better visibility
             let height_screen = bounds.height() * transform.scale;
-            
+
             if height_screen > 5.0 {
                 let layer_name = &geometry.layer_name;
 
@@ -597,18 +597,13 @@ impl StackRenderer {
     }
 
     /// Create outlined text shapes (black outline + white text) for better visibility
-    fn create_outlined_text_shapes(
-        &self,
-        pos: Pos2,
-        text: &str,
-        font_size: f32,
-    ) -> Vec<Shape> {
-        use egui::epaint::{FontId, TextShape};
+    fn create_outlined_text_shapes(&self, pos: Pos2, text: &str, font_size: f32) -> Vec<Shape> {
+        use egui::epaint::FontId;
         let mut shapes = Vec::new();
-        
-        let font_id = FontId::proportional(font_size);
+
+        let _font_id = FontId::proportional(font_size);
         let stroke_width = 1.5;
-        
+
         // Create background stroke (black outline) for better readability
         let offsets = [
             (-stroke_width, -stroke_width),
@@ -620,18 +615,18 @@ impl StackRenderer {
             (stroke_width, 0.0),
             (stroke_width, stroke_width),
         ];
-        
+
         // Add black outline text shapes
         for (dx, dy) in offsets {
             let offset_pos = Pos2::new(pos.x + dx, pos.y + dy);
-            
+
             // Create a simple filled rectangle as outline
             let text_width = font_size * 0.6 * text.len() as f32;
             let text_height = font_size * 1.2;
             let rect = Rect::from_center_size(offset_pos, Vec2::new(text_width, text_height));
             shapes.push(Shape::rect_filled(rect, 2.0, Color32::BLACK));
         }
-        
+
         // Add main white text background
         let text_width = font_size * 0.6 * text.len() as f32;
         let text_height = font_size * 1.2;
@@ -685,9 +680,9 @@ impl StackRenderer {
         let scaler = self.get_current_scaler(stack);
         let layer_geometries =
             self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
-        
+
         // Also get VIA geometries for hit testing (VIAs have highest z-order)
-        let via_geometries = 
+        let via_geometries =
             self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
 
         // Test VIAs first (highest z-index, rendered on top of everything)

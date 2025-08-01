@@ -143,13 +143,10 @@ impl MainWindow {
     }
 
     fn load_stack(&mut self, stack: ProcessStack) {
-        println!("Loading stack into viewer...");
-
         self.current_stack = Some(stack);
 
         // Auto-fit the new stack
         if let Some(ref stack) = self.current_stack {
-            println!("Auto-fitting stack view...");
             self.stack_viewer.auto_fit(stack);
         }
 
@@ -160,8 +157,6 @@ impl MainWindow {
 
         // Close file menu
         self.file_menu.is_open = false;
-
-        println!("Stack loaded successfully!");
     }
 
     fn show_about_dialog(&mut self, ctx: &Context) {
@@ -252,37 +247,16 @@ impl MainWindow {
     }
 
     fn load_file_from_path(&mut self, path: PathBuf) {
-        println!("Loading ITF file: {}", path.display());
-
         match std::fs::read_to_string(&path) {
-            Ok(content) => {
-                println!("File content length: {} characters", content.len());
-                println!(
-                    "First 200 characters of file:\n{}",
-                    content.chars().take(200).collect::<String>()
-                );
-
-                match parse_itf_file(&content) {
-                    Ok(stack) => {
-                        let summary = stack.get_process_summary();
-                        println!("ITF file parsed successfully!");
-                        println!("  Technology: {}", summary.technology_name);
-                        println!("  Total layers: {}", summary.total_layers);
-                        println!("  Conductor layers: {}", summary.conductor_layers);
-                        println!("  Dielectric layers: {}", summary.dielectric_layers);
-                        println!("  Via connections: {}", summary.via_connections);
-                        println!("  Total height: {:.3} um", summary.total_height);
-
-                        self.load_stack(stack);
-                    }
-                    Err(e) => {
-                        println!("Parse error: {e}");
-                        self.show_error_dialog(&format!("Failed to parse ITF file: {e}"));
-                    }
+            Ok(content) => match parse_itf_file(&content) {
+                Ok(stack) => {
+                    self.load_stack(stack);
                 }
-            }
+                Err(e) => {
+                    self.show_error_dialog(&format!("Failed to parse ITF file: {e}"));
+                }
+            },
             Err(e) => {
-                println!("File read error: {e}");
                 self.show_error_dialog(&format!("Failed to read file: {e}"));
             }
         }
