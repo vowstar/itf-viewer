@@ -496,3 +496,63 @@ VIA VIA6 { FROM=M6	TO=M7
     assert_eq!(via6.area, 0.0);
     assert_eq!(via6.resistance_per_via, 0.0);
 }
+
+#[test]
+fn test_parse_complex_1p7m() {
+    let content =
+        fs::read_to_string("tests/data/complex_1p7m.itf").expect("Failed to read complex_1p7m.itf");
+
+    let result = parse_itf_file(&content);
+    assert!(
+        result.is_ok(),
+        "Failed to parse complex_1p7m.itf: {:?}",
+        result.err()
+    );
+
+    let stack = result.unwrap();
+
+    // Test technology info
+    assert_eq!(stack.technology_info.name, "Complex_1P7M_TestStack");
+    assert_eq!(stack.technology_info.global_temperature, Some(25.0));
+
+    // Verify we have multiple layers (this is a complex 7-metal layer stack)
+    assert!(
+        stack.layers.len() > 10,
+        "Complex 1P7M stack should have many dielectric and conductor layers"
+    );
+
+    // Check for some expected metal layers
+    let metal_layers: Vec<_> = stack
+        .layers
+        .iter()
+        .filter(|layer| layer.layer_type() == LayerType::Conductor)
+        .collect();
+
+    assert!(
+        metal_layers.len() >= 7,
+        "Should have at least 7 metal layers (metal1-7 + alpa)"
+    );
+
+    // Verify some key metal layers exist
+    let metal1 = stack.layers.iter().find(|layer| layer.name() == "metal1");
+    assert!(metal1.is_some(), "metal1 layer should exist");
+
+    let metal7 = stack.layers.iter().find(|layer| layer.name() == "metal7");
+    assert!(metal7.is_some(), "metal7 layer should exist");
+
+    let alpa = stack.layers.iter().find(|layer| layer.name() == "alpa");
+    assert!(alpa.is_some(), "alpa layer should exist");
+
+    // Check for vias
+    assert!(
+        stack.via_stack.vias.len() > 5,
+        "Should have multiple vias for 1P7M stack"
+    );
+
+    // Verify some key vias exist
+    let via1 = stack.via_stack.vias.iter().find(|v| v.name == "via1");
+    assert!(via1.is_some(), "via1 should exist");
+
+    let viapa = stack.via_stack.vias.iter().find(|v| v.name == "viapa");
+    assert!(viapa.is_some(), "viapa should exist");
+}
