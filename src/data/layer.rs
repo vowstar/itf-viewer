@@ -19,6 +19,7 @@ pub struct DielectricLayer {
     pub sw_t: Option<f64>,
     pub tw_t: Option<f64>,
     pub z_position: f64,
+    pub auto_created: bool,
 }
 
 impl DielectricLayer {
@@ -31,6 +32,20 @@ impl DielectricLayer {
             sw_t: None,
             tw_t: None,
             z_position: 0.0,
+            auto_created: false,
+        }
+    }
+
+    pub fn new_auto_created(name: String, thickness: f64, dielectric_constant: f64) -> Self {
+        Self {
+            name,
+            thickness,
+            dielectric_constant,
+            measured_from: None,
+            sw_t: None,
+            tw_t: None,
+            z_position: 0.0,
+            auto_created: true,
         }
     }
 
@@ -231,6 +246,13 @@ impl Layer {
 
     pub fn is_dielectric(&self) -> bool {
         matches!(self, Layer::Dielectric(_))
+    }
+
+    pub fn is_auto_created(&self) -> bool {
+        match self {
+            Layer::Dielectric(layer) => layer.auto_created,
+            Layer::Conductor(_) => false,
+        }
     }
 }
 

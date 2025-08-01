@@ -104,7 +104,7 @@ impl StackRenderer {
         let dielectric_layers = stack.get_dielectric_layers();
         for dielectric in dielectric_layers {
             let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, dielectric)).unwrap();
-            let exaggerated_height = scaler.get_exaggerated_thickness(dielectric.thickness() as f32);
+            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(dielectric);
             
             let params = LayerGeometryParams {
                 layer: dielectric,
@@ -124,7 +124,7 @@ impl StackRenderer {
         let conductor_layers = stack.get_conductor_layers();
         for conductor in conductor_layers {
             let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, conductor)).unwrap();
-            let exaggerated_height = scaler.get_exaggerated_thickness(conductor.thickness() as f32);
+            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(conductor);
             
             let params = LayerGeometryParams {
                 layer: conductor,
@@ -304,7 +304,7 @@ impl StackRenderer {
         // First, position all DIELECTRIC layers
         let dielectric_layers = stack.get_dielectric_layers();
         for dielectric in dielectric_layers {
-            let exaggerated_height = scaler.get_exaggerated_thickness(dielectric.thickness() as f32);
+            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(dielectric);
             let z_bottom = current_z;
             let z_top = current_z + exaggerated_height;
             layer_boundaries.insert(dielectric.name().to_string(), (z_bottom, z_top));
@@ -314,7 +314,7 @@ impl StackRenderer {
         // Then, position all CONDUCTOR layers
         let conductor_layers = stack.get_conductor_layers();
         for conductor in conductor_layers {
-            let exaggerated_height = scaler.get_exaggerated_thickness(conductor.thickness() as f32);
+            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(conductor);
             let z_bottom = current_z;
             let z_top = current_z + exaggerated_height;
             layer_boundaries.insert(conductor.name().to_string(), (z_bottom, z_top));

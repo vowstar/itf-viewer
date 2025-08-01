@@ -82,6 +82,16 @@ impl ThicknessScaler {
             }
         }
     }
+
+    /// Get the exaggerated thickness for a layer, with special handling for auto-created layers
+    pub fn get_exaggerated_thickness_for_layer(&self, layer: &crate::data::Layer) -> f32 {
+        if layer.is_auto_created() {
+            // Auto-created layers get 200% thickness display
+            (layer.thickness() as f32) * 2.0
+        } else {
+            self.get_exaggerated_thickness(layer.thickness() as f32)
+        }
+    }
     
     /// Get the scaling factor for a given actual thickness
     pub fn get_scale_factor(&self, actual_thickness: f32) -> f32 {
@@ -109,13 +119,15 @@ impl ThicknessScaler {
     /// Apply thickness exaggeration to all layers in a stack
     pub fn create_exaggerated_layer_heights(&self, stack: &ProcessStack) -> Vec<f32> {
         stack.layers.iter()
-            .map(|layer| self.get_exaggerated_thickness(layer.thickness() as f32))
+            .map(|layer| self.get_exaggerated_thickness_for_layer(layer))
             .collect()
     }
     
     /// Get the total exaggerated height of the stack
     pub fn get_exaggerated_total_height(&self, stack: &ProcessStack) -> f32 {
-        self.create_exaggerated_layer_heights(stack).iter().sum()
+        stack.layers.iter()
+            .map(|layer| self.get_exaggerated_thickness_for_layer(layer))
+            .sum()
     }
 }
 

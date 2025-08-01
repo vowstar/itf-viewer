@@ -74,6 +74,55 @@ impl ProcessStack {
         self.update_via_positions();
     }
 
+    pub fn create_missing_layer(&mut self, layer_name: &str) {
+        if self.get_layer(layer_name).is_some() {
+            return;
+        }
+        
+        let average_thickness = if !self.layers.is_empty() {
+            self.layers.iter().map(|l| l.thickness()).sum::<f64>() / self.layers.len() as f64
+        } else {
+            1.0
+        };
+        
+        let substrate_thickness = average_thickness * 2.0;
+        
+        let auto_layer = Layer::Dielectric(
+            crate::data::layer::DielectricLayer::new_auto_created(
+                layer_name.to_string(),
+                substrate_thickness,
+                3.9
+            )
+        );
+        
+        self.layers.insert(0, auto_layer);
+        
+        self.layer_name_to_index.clear();
+        for (index, layer) in self.layers.iter().enumerate() {
+            self.layer_name_to_index.insert(layer.name().to_string(), index);
+        }
+        
+        self.update_layer_positions();
+    }
+
+    pub fn ensure_via_layers_exist(&mut self) {
+        let mut missing_layers = std::collections::HashSet::new();
+        
+        for via in &self.via_stack.vias {
+            if self.get_layer(&via.from_layer).is_none() {
+                missing_layers.insert(via.from_layer.clone());
+            }
+            if self.get_layer(&via.to_layer).is_none() {
+                missing_layers.insert(via.to_layer.clone());
+            }
+        }
+        
+        for layer_name in missing_layers {
+            eprintln!("Info: Auto-creating missing layer '{}' (200% thickness)", layer_name);
+            self.create_missing_layer(&layer_name);
+        }
+    }
+
     fn update_layer_positions(&mut self) {
         let mut current_z = 0.0;
         

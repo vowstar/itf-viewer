@@ -84,6 +84,9 @@ impl ItfParser {
             }
         }
 
+        // Auto-create missing layers before validation
+        stack.ensure_via_layers_exist();
+
         // Try strict validation first
         match stack.validate_stack_strict() {
             Ok(()) => {
