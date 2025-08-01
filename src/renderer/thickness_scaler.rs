@@ -70,9 +70,10 @@ impl ThicknessScaler {
     /// Set the thickness scaler to schematic mode with custom min/max thickness
     pub fn set_schematic_mode(&mut self, min_thickness: f64, max_thickness: f64) {
         self.thickness_range = Some((min_thickness as f32, max_thickness as f32));
-        // In schematic mode, we want 30% to 100% mapping
-        self.min_ratio = 0.3;
-        self.max_ratio = 1.0;
+        // In schematic mode, compress all layers to 30%-60% range for better visual distinction
+        // This ensures even the thickest layer is visually scaled down from its original size
+        self.min_ratio = 0.3; // Thinnest layers -> 30%
+        self.max_ratio = 0.6; // Thickest layers -> 60% (not 100%)
         self.schematic_mode = true;
     }
 

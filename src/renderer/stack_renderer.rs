@@ -14,6 +14,7 @@ struct LayerGeometryParams<'a> {
     z_top: f32,
     exaggerated_height: f32,
     layer_width: f32,
+    max_trapezoid_width: Option<f32>, // Reference width for three-column alignment
 }
 
 pub struct StackRenderer {
@@ -105,6 +106,44 @@ impl StackRenderer {
         }
 
         shapes
+    }
+
+    /// Calculate appropriate dielectric layer width to contain conductor layers
+    /// Using ideal DCDCDCD layout: 7x max trapezoid width for proper spacing
+    fn calculate_dielectric_width_for_conductors(
+        &self,
+        max_trapezoid_width: f32,
+        _transform: &ViewTransform,
+        original_layer_width: f32,
+    ) -> f32 {
+        // Always use the provided max_trapezoid_width, which is already correctly calculated
+        // for the current mode (normal or schematic) in create_layer_geometries_ordered
+        let reference_trapezoid_width = max_trapezoid_width;
+
+        // Ideal dielectric width: 7 times the reference trapezoid width
+        // This allows for DCDCDCD layout where:
+        // - 3 trapezoids (C) = 3x reference_trapezoid_width
+        // - 2 spaces between trapezoids (D) = 2x reference_trapezoid_width (1x each)
+        // - 2 edge margins (D) = 2x reference_trapezoid_width (1x each)
+        // Total: 3 + 2 + 2 = 7x reference_trapezoid_width
+        let ideal_dielectric_width = reference_trapezoid_width * 7.0;
+
+        // Debug output for dielectric width calculation
+        if cfg!(debug_assertions) {
+            println!("DEBUG Dielectric Unified: Mode: {}, Max trapezoid width: {}, DCDCDCD width: {}, Original layer width: {}", 
+                if self.show_schematic_mode { "Schematic" } else { "Normal" },
+                max_trapezoid_width, ideal_dielectric_width, original_layer_width);
+        }
+
+        // In schematic mode, always use the calculated DCDCDCD width for proper proportions
+        // In normal mode, ensure minimum width but prefer DCDCDCD proportions
+        if self.show_schematic_mode {
+            // Force DCDCDCD proportions in schematic mode
+            ideal_dielectric_width
+        } else {
+            // In normal mode, ensure dielectric is at least as wide as original, but prefer DCDCDCD if larger
+            ideal_dielectric_width.max(original_layer_width)
+        }
     }
 
     /// Render the stack with text, using a painter for proper text rendering
@@ -405,6 +444,29 @@ impl StackRenderer {
         let layer_width =
             calculate_optimal_layer_width(total_exaggerated_height, viewport_rect.width(), 50.0);
 
+        // First, find the maximum trapezoid width from all conductor layers
+        // This will be used as the reference for three-column layout alignment
+        // Use the scaler-aware version to handle both normal and schematic modes correctly
+        let conductor_layers: Vec<&crate::data::ConductorLayer> = stack
+            .layers
+            .iter()
+            .filter_map(|layer| match layer {
+                Layer::Conductor(conductor) => Some(conductor.as_ref()),
+                _ => None,
+            })
+            .collect();
+
+        let max_trapezoid_width = if self.show_schematic_mode {
+            // In schematic mode, use scaled thicknesses for proper proportions
+            crate::renderer::geometry::find_max_conductor_trapezoid_width_with_scaler(
+                &conductor_layers,
+                scaler,
+            )
+        } else {
+            // In normal mode, use original thicknesses
+            crate::renderer::geometry::find_max_conductor_trapezoid_width(&conductor_layers)
+        };
+
         // ITF layers are defined from top to bottom, but we need to render from bottom to top
         // So we reverse the layer order for rendering to match the physical stack
         let mut current_z = 0.0f32;
@@ -466,6 +528,7 @@ impl StackRenderer {
                 z_top,
                 exaggerated_height,
                 layer_width,
+                max_trapezoid_width,
             };
             let geometry = self.create_single_layer_geometry(&params, transform);
 
@@ -482,11 +545,33 @@ impl StackRenderer {
     ) -> LayerGeometry {
         let center_x = 0.0;
 
-        // Convert to screen coordinates
-        let world_bottom = Pos2::new(center_x, -params.z_bottom); // Flip Y axis
-        let screen_bottom = transform.world_to_screen(world_bottom);
-        let screen_height = params.exaggerated_height * transform.scale;
-        let screen_width = params.layer_width * transform.scale;
+        // Convert to world coordinates
+        let _world_bottom = Pos2::new(center_x, -params.z_bottom); // Flip Y axis
+
+        // Calculate appropriate width based on layer type
+        // For both conductor and dielectric layers, use world coordinates
+        // Let the shape objects handle screen coordinate conversion
+        let world_width = match params.layer {
+            Layer::Conductor(_) => {
+                // For conductor layers, use the original layer_width for three-column calculation
+                params.layer_width
+            }
+            Layer::Dielectric(_) => {
+                // For dielectric layers, calculate width based on conductor layer requirements
+                // This ensures dielectric layers are wide enough to contain all conductor shapes
+                if let Some(max_trapezoid_width) = params.max_trapezoid_width {
+                    // Calculate the required width for three-column trapezoid layout
+                    self.calculate_dielectric_width_for_conductors(
+                        max_trapezoid_width,
+                        transform,
+                        params.layer_width,
+                    )
+                } else {
+                    // Fallback to original width if no conductor reference available
+                    params.layer_width
+                }
+            }
+        };
 
         let is_selected = self.selected_layer.as_deref() == Some(params.layer.name());
         let base_color = self
@@ -499,15 +584,22 @@ impl StackRenderer {
 
         match params.layer {
             Layer::Conductor(conductor) => {
-                // 所有导体层都使用三列梯形布局
-                let three_column_trapezoid = ThreeColumnTrapezoidShape::from_conductor_layer(
-                    conductor,
-                    Pos2::new(screen_bottom.x, screen_bottom.y),
-                    screen_width,
-                    screen_height,
-                    color,
-                    stroke,
-                );
+                // All conductor layers use three-column trapezoid layout with max trapezoid width as reference
+                // Pass world coordinates to geometry function, let it handle screen conversion
+                let world_bottom = Pos2::new(center_x, -params.z_bottom); // World coordinates
+                let world_height = params.exaggerated_height; // World height (not scaled)
+
+                let three_column_trapezoid =
+                    ThreeColumnTrapezoidShape::from_conductor_layer_with_reference(
+                        conductor,
+                        world_bottom,
+                        world_width,
+                        world_height,
+                        color,
+                        stroke,
+                        params.max_trapezoid_width,
+                        Some(transform), // Pass transform for coordinate conversion
+                    );
                 LayerGeometry::new_three_column_trapezoid(
                     params.layer.name().to_string(),
                     params.z_bottom,
@@ -516,12 +608,24 @@ impl StackRenderer {
                 )
             }
             Layer::Dielectric(_) => {
-                let rectangle = RectangleShape::new(
-                    Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                    screen_width,
-                    screen_height,
+                // Use world coordinates like conductor layers
+                let world_bottom = Pos2::new(center_x, -params.z_bottom); // World coordinates
+                let world_height = params.exaggerated_height; // World height (not scaled)
+
+                // Debug output for dielectric layer rendering
+                if cfg!(debug_assertions) {
+                    println!("DEBUG Dielectric Render: Layer '{}' - World width: {}, World height: {}, Mode: {}", 
+                        params.layer.name(), world_width, world_height,
+                        if self.show_schematic_mode { "Schematic" } else { "Normal" });
+                }
+
+                let rectangle = RectangleShape::new_world_coords(
+                    world_bottom,
+                    world_width,
+                    world_height,
                     color,
                     stroke,
+                    transform,
                 );
                 LayerGeometry::new_rectangle(
                     params.layer.name().to_string(),
@@ -545,9 +649,9 @@ impl StackRenderer {
         // Get layer boundaries for precise VIA positioning
         let layer_boundaries = self.calculate_ordered_layer_boundaries(stack, scaler);
 
-        // Calculate optimal layer width for metal positioning
+        // Calculate optimal layer width for metal positioning (not used in new 7x layout)
         let total_exaggerated_height = scaler.get_exaggerated_total_height(stack);
-        let layer_width =
+        let _layer_width =
             calculate_optimal_layer_width(total_exaggerated_height, viewport_rect.width(), 50.0);
 
         for via in stack.via_stack.iter() {
@@ -569,78 +673,151 @@ impl StackRenderer {
 
                 let via_height = (via_z_end - via_z_start).abs();
 
+                // Find the maximum trapezoid width to match the conductor layout
+                // Use scaler-aware calculation for proper alignment in both modes
+                let conductor_layers: Vec<&crate::data::ConductorLayer> = stack
+                    .layers
+                    .iter()
+                    .filter_map(|layer| match layer {
+                        Layer::Conductor(conductor) => Some(conductor.as_ref()),
+                        _ => None,
+                    })
+                    .collect();
+
+                let max_trapezoid_width = if self.show_schematic_mode {
+                    // In schematic mode, use scaled thicknesses for proper proportions
+                    crate::renderer::geometry::find_max_conductor_trapezoid_width_with_scaler(
+                        &conductor_layers,
+                        scaler,
+                    )
+                } else {
+                    // In normal mode, use original thicknesses
+                    crate::renderer::geometry::find_max_conductor_trapezoid_width(&conductor_layers)
+                };
+
                 // Calculate via width based on connected metal layers (narrowest edge)
                 let via_width = self.calculate_via_width(via, stack, scaler);
 
-                // Convert via center to screen coordinates first (same as metal logic)
+                // Convert via center to screen coordinates
                 let via_center_z = (via_z_start + via_z_end) * 0.5;
                 let world_center = Pos2::new(0.0, -via_center_z); // Center in world coords
                 let screen_center = transform.world_to_screen(world_center);
                 let screen_height = via_height * transform.scale;
                 let screen_width = via_width * transform.scale;
 
-                // Calculate screen layer width (same as metal logic)
-                let screen_layer_width = layer_width * transform.scale;
+                // Calculate VIA positions to align with the new 7x conductor layout
+                // This matches the exact same logic used in ThreeColumnTrapezoidShape
+                if let Some(base_trapezoid_width) = max_trapezoid_width {
+                    // Use the same 7x layout calculation as conductors
+                    let world_effective_width = base_trapezoid_width * 7.0; // 7x layout
+                    let screen_effective_width = world_effective_width * transform.scale;
 
-                // Create three vias using SCREEN coordinate system (same as metal)
-                // Match the exact metal column positions: spacing = screen_layer_width / 4.0
-                let spacing = screen_layer_width / 4.0;
-                // No offset needed - vias should align perfectly with metal columns
+                    // Calculate the same positions as the trapezoids using screen coordinates
+                    let screen_base_unit = screen_effective_width / 7.0; // Each unit in the 7x layout
 
-                let screen_positions = [
-                    screen_center.x - spacing, // Left (matches metal left)
-                    screen_center.x,           // Center (matches metal center)
-                    screen_center.x + spacing, // Right (matches metal right)
-                ];
+                    let left_offset_from_left_edge = 1.5 * screen_base_unit;
+                    let center_offset_from_left_edge = 3.5 * screen_base_unit;
+                    let right_offset_from_left_edge = 5.5 * screen_base_unit;
 
-                // Vias now perfectly aligned with metal trapezoid columns
+                    let left_edge_x = screen_center.x - screen_effective_width * 0.5;
 
-                for (i, &screen_x) in screen_positions.iter().enumerate() {
-                    // Create via rectangle directly in screen coordinates
-                    let via_screen_center = Pos2::new(screen_x, screen_center.y);
+                    let screen_positions = [
+                        left_edge_x + left_offset_from_left_edge, // Left (matches trapezoid left)
+                        left_edge_x + center_offset_from_left_edge, // Center (matches trapezoid center)
+                        left_edge_x + right_offset_from_left_edge, // Right (matches trapezoid right)
+                    ];
 
-                    // Check if this VIA will be selected
-                    let via_name = format!("{}_{}", via.name, i);
-                    let is_selected = self.selected_layer.as_deref() == Some(&via_name)
-                        || self.selected_layer.as_deref() == Some(&via.name);
+                    // VIAs now perfectly aligned with the new 7x layout trapezoid columns
 
-                    // Use different colors for selected vs normal VIAs
-                    let via_color = if is_selected {
-                        Color32::from_rgb(255, 215, 0) // Gold color for selected VIA
-                    } else {
-                        Color32::from_rgb(192, 192, 192) // Silver-gray color for normal VIA
-                    };
-                    let stroke = Stroke::new(
-                        if is_selected { 3.0 } else { 2.0 },
-                        if is_selected {
-                            Color32::YELLOW
+                    for (i, &screen_x) in screen_positions.iter().enumerate() {
+                        // Create via rectangle directly in screen coordinates
+                        let via_screen_center = Pos2::new(screen_x, screen_center.y);
+
+                        // Check if this VIA will be selected
+                        let via_name = format!("{}_{}", via.name, i);
+                        let is_selected = self.selected_layer.as_deref() == Some(&via_name)
+                            || self.selected_layer.as_deref() == Some(&via.name);
+
+                        // Use different colors for selected vs normal VIAs
+                        let via_color = if is_selected {
+                            Color32::from_rgb(255, 215, 0) // Gold color for selected VIA
                         } else {
-                            Color32::DARK_GRAY
-                        },
-                    );
+                            Color32::from_rgb(192, 192, 192) // Silver-gray color for normal VIA
+                        };
+                        let stroke = Stroke::new(
+                            if is_selected { 3.0 } else { 2.0 },
+                            if is_selected {
+                                Color32::YELLOW
+                            } else {
+                                Color32::DARK_GRAY
+                            },
+                        );
 
-                    let rectangle = RectangleShape::new(
-                        via_screen_center,
-                        screen_width,
-                        screen_height,
-                        via_color,
-                        stroke,
-                    );
+                        let rectangle = RectangleShape::new(
+                            via_screen_center,
+                            screen_width,
+                            screen_height,
+                            via_color,
+                            stroke,
+                        );
 
-                    let via_name = format!("{}_{}", via.name, i);
-                    let mut geometry = LayerGeometry::new_rectangle(
-                        via_name.clone(),
-                        via_z_start.min(via_z_end),
-                        via_z_start.max(via_z_end),
-                        rectangle,
-                    );
+                        let via_name = format!("{}_{}", via.name, i);
+                        let mut geometry = LayerGeometry::new_rectangle(
+                            via_name.clone(),
+                            via_z_start.min(via_z_end),
+                            via_z_start.max(via_z_end),
+                            rectangle,
+                        );
 
-                    // Check if this VIA is selected (check both full name and base name)
-                    let is_selected = self.selected_layer.as_deref() == Some(&via_name)
-                        || self.selected_layer.as_deref() == Some(&via.name);
-                    geometry.set_selected(is_selected);
+                        // Check if this VIA is selected (check both full name and base name)
+                        let is_selected = self.selected_layer.as_deref() == Some(&via_name)
+                            || self.selected_layer.as_deref() == Some(&via.name);
+                        geometry.set_selected(is_selected);
 
-                    geometries.push(geometry);
+                        geometries.push(geometry);
+                    }
+                } else {
+                    // Fallback: if no conductor layers found, use simple center alignment
+                    let screen_positions = [screen_center.x]; // Just center
+
+                    for (i, &screen_x) in screen_positions.iter().enumerate() {
+                        let via_screen_center = Pos2::new(screen_x, screen_center.y);
+                        let via_name = format!("{}_{}", via.name, i);
+                        let is_selected = self.selected_layer.as_deref() == Some(&via_name)
+                            || self.selected_layer.as_deref() == Some(&via.name);
+
+                        let via_color = if is_selected {
+                            Color32::from_rgb(255, 215, 0)
+                        } else {
+                            Color32::from_rgb(192, 192, 192)
+                        };
+                        let stroke = Stroke::new(
+                            if is_selected { 3.0 } else { 2.0 },
+                            if is_selected {
+                                Color32::YELLOW
+                            } else {
+                                Color32::DARK_GRAY
+                            },
+                        );
+
+                        let rectangle = RectangleShape::new(
+                            via_screen_center,
+                            screen_width,
+                            screen_height,
+                            via_color,
+                            stroke,
+                        );
+
+                        let mut geometry = LayerGeometry::new_rectangle(
+                            via_name.clone(),
+                            via_z_start.min(via_z_end),
+                            via_z_start.max(via_z_end),
+                            rectangle,
+                        );
+
+                        geometry.set_selected(is_selected);
+                        geometries.push(geometry);
+                    }
                 }
             }
         }
@@ -2244,5 +2421,116 @@ mod tests {
         // Empty stack should produce no layer shapes
         assert!(shapes.is_empty() || shapes.len() <= 2); // Maybe just background/border
         assert!(bounds.width() <= 0.0 || bounds.height() <= 0.0);
+    }
+
+    #[test]
+    fn test_dielectric_width_adapts_to_conductor_layout() {
+        use crate::data::{ConductorLayer, DielectricLayer, TechnologyInfo};
+
+        let mut renderer = StackRenderer::new();
+        let tech = TechnologyInfo::new("test_tech".to_string());
+        let mut stack = ProcessStack::new(tech);
+
+        // Add a dielectric layer first
+        let dielectric = DielectricLayer::new("oxide1".to_string(), 100.0, 4.2);
+        stack.add_layer(Layer::Dielectric(dielectric));
+
+        // Add a conductor layer with significant thickness (will create large trapezoids)
+        let conductor = ConductorLayer::new("metal1".to_string(), 200.0); // Large thickness = large trapezoids
+        stack.add_layer(Layer::Conductor(Box::new(conductor)));
+
+        // Add another dielectric on top
+        let dielectric2 = DielectricLayer::new("oxide2".to_string(), 150.0, 4.2);
+        stack.add_layer(Layer::Dielectric(dielectric2));
+
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let scaler = renderer.create_normal_scaler(&stack);
+        let layer_geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+
+        // Find dielectric and conductor geometries
+        let mut dielectric_geometries = Vec::new();
+        let mut conductor_geometries = Vec::new();
+
+        for geometry in &layer_geometries {
+            match &geometry.shape {
+                crate::renderer::geometry::LayerShape::ThreeColumnTrapezoid(_) => {
+                    conductor_geometries.push(geometry);
+                }
+                crate::renderer::geometry::LayerShape::Rectangle(_) => {
+                    dielectric_geometries.push(geometry);
+                }
+                _ => {}
+            }
+        }
+
+        // Should have both dielectric and conductor layers
+        assert!(
+            !dielectric_geometries.is_empty(),
+            "Should have dielectric layers"
+        );
+        assert!(
+            !conductor_geometries.is_empty(),
+            "Should have conductor layers"
+        );
+
+        // Get the bounds of conductor and dielectric layers
+        let conductor_bounds = conductor_geometries[0].get_bounds();
+        let dielectric_bounds = dielectric_geometries[0].get_bounds();
+
+        println!("Test dielectric width adaptation:");
+        println!("  Conductor bounds: {:?}", conductor_bounds);
+        println!("  Dielectric bounds: {:?}", dielectric_bounds);
+
+        // The dielectric layer should be wider than the conductor layer to provide proper containment
+        // The dielectric should extend at least one trapezoid width beyond the conductor on each side
+        assert!(
+            dielectric_bounds.width() >= conductor_bounds.width(),
+            "Dielectric width ({:.2}) should be at least as wide as conductor width ({:.2})",
+            dielectric_bounds.width(),
+            conductor_bounds.width()
+        );
+
+        // More specifically, dielectric should contain the conductor with extra margin
+        // The dielectric should extend beyond the conductor bounds
+        let conductor_left = conductor_bounds.min.x;
+        let conductor_right = conductor_bounds.max.x;
+        let dielectric_left = dielectric_bounds.min.x;
+        let dielectric_right = dielectric_bounds.max.x;
+
+        assert!(
+            dielectric_left <= conductor_left,
+            "Dielectric left ({:.2}) should extend beyond conductor left ({:.2})",
+            dielectric_left,
+            conductor_left
+        );
+        assert!(
+            dielectric_right >= conductor_right,
+            "Dielectric right ({:.2}) should extend beyond conductor right ({:.2})",
+            dielectric_right,
+            conductor_right
+        );
+
+        // The extra margin should be meaningful (at least 50 units for this test case)
+        let left_margin = conductor_left - dielectric_left;
+        let right_margin = dielectric_right - conductor_right;
+        assert!(
+            left_margin >= 50.0,
+            "Left margin should be at least 50 units, got {:.2}",
+            left_margin
+        );
+        assert!(
+            right_margin >= 50.0,
+            "Right margin should be at least 50 units, got {:.2}",
+            right_margin
+        );
+
+        println!(
+            "  Left margin: {:.2}, Right margin: {:.2}",
+            left_margin, right_margin
+        );
+        println!("  Dielectric width adaptation test PASSED");
     }
 }
