@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use serde::{Deserialize, Serialize};
 use crate::data::properties::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LayerType {
@@ -155,31 +155,41 @@ impl ConductorLayer {
     }
 
     pub fn get_trapezoid_angle(&self) -> f64 {
-        self.physical_props.side_tangent
+        self.physical_props
+            .side_tangent
             .map(|tan_theta| tan_theta.atan())
             .unwrap_or(0.0)
     }
 
-    pub fn calculate_resistance(&self, width: f64, length: f64, temperature: f64, reference_temp: f64) -> Option<f64> {
-        let base_rho = self.rho_vs_width_spacing
+    pub fn calculate_resistance(
+        &self,
+        width: f64,
+        length: f64,
+        temperature: f64,
+        reference_temp: f64,
+    ) -> Option<f64> {
+        let base_rho = self
+            .rho_vs_width_spacing
             .as_ref()
             .and_then(|table| table.lookup(width, 0.0))
             .or(self.electrical_props.rpsq)?;
 
-        let temp_coefficient = self.electrical_props.crt1.unwrap_or(0.0) * (temperature - reference_temp) +
-                              self.electrical_props.crt2.unwrap_or(0.0) * (temperature - reference_temp).powi(2);
+        let temp_coefficient = self.electrical_props.crt1.unwrap_or(0.0)
+            * (temperature - reference_temp)
+            + self.electrical_props.crt2.unwrap_or(0.0) * (temperature - reference_temp).powi(2);
 
         let temp_adjusted_rho = base_rho * (1.0 + temp_coefficient);
-        
+
         Some(temp_adjusted_rho * length / (width * self.thickness))
     }
 
     pub fn get_effective_width(&self, nominal_width: f64, spacing: f64) -> f64 {
-        let etch_bias = self.etch_vs_width_spacing
+        let etch_bias = self
+            .etch_vs_width_spacing
             .as_ref()
             .and_then(|table| table.lookup(nominal_width, spacing))
             .unwrap_or(0.0);
-        
+
         (nominal_width - 2.0 * etch_bias).max(0.0)
     }
 }
@@ -263,9 +273,9 @@ mod tests {
 
     #[test]
     fn test_dielectric_layer_creation() {
-        let layer = DielectricLayer::new("test_dielectric".to_string(), 1.0, 4.2)
-            .with_position(5.0);
-        
+        let layer =
+            DielectricLayer::new("test_dielectric".to_string(), 1.0, 4.2).with_position(5.0);
+
         assert_eq!(layer.name, "test_dielectric");
         assert_eq!(layer.thickness, 1.0);
         assert_eq!(layer.dielectric_constant, 4.2);
@@ -279,7 +289,7 @@ mod tests {
         let layer = ConductorLayer::new("metal1".to_string(), 0.5)
             .with_position(2.0)
             .with_side_tangent(0.1);
-        
+
         assert_eq!(layer.name, "metal1");
         assert_eq!(layer.thickness, 0.5);
         assert_eq!(layer.z_position, 2.0);
@@ -292,12 +302,12 @@ mod tests {
     fn test_layer_enum() {
         let dielectric = Layer::Dielectric(DielectricLayer::new("test".to_string(), 1.0, 4.2));
         let conductor = Layer::Conductor(Box::new(ConductorLayer::new("metal".to_string(), 0.5)));
-        
+
         assert!(dielectric.is_dielectric());
         assert!(!dielectric.is_conductor());
         assert!(conductor.is_conductor());
         assert!(!conductor.is_dielectric());
-        
+
         assert_eq!(dielectric.name(), "test");
         assert_eq!(conductor.name(), "metal");
     }
@@ -308,10 +318,10 @@ mod tests {
         layer.electrical_props.rpsq = Some(0.05);
         layer.electrical_props.crt1 = Some(0.003);
         layer.electrical_props.crt2 = Some(-1e-7);
-        
+
         let resistance = layer.calculate_resistance(1.0, 10.0, 75.0, 25.0);
         assert!(resistance.is_some());
-        
+
         let r = resistance.unwrap();
         assert!(r > 0.0);
     }
@@ -319,14 +329,14 @@ mod tests {
     #[test]
     fn test_effective_width_calculation() {
         let mut layer = ConductorLayer::new("metal1".to_string(), 0.2);
-        
+
         let etch_table = LookupTable2D::new(
             vec![0.1, 0.2],
             vec![0.1, 0.2],
-            vec![vec![0.01, 0.015], vec![0.005, 0.01]]
+            vec![vec![0.01, 0.015], vec![0.005, 0.01]],
         );
         layer.etch_vs_width_spacing = Some(etch_table);
-        
+
         let effective_width = layer.get_effective_width(0.2, 0.1);
         assert_relative_eq!(effective_width, 0.2 - 2.0 * 0.015, epsilon = 1e-10);
     }

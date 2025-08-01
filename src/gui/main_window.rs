@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use egui::Context;
 use crate::data::ProcessStack;
 use crate::gui::{FileMenu, LayerPanel, StackViewer, Toolbar, ToolbarAction};
 use crate::parser::parse_itf_file;
+use egui::Context;
 use rfd::FileDialog;
 use std::path::PathBuf;
 
@@ -50,7 +50,8 @@ impl MainWindow {
 
         // Show layer panel and handle layer selection
         if let Some(selected_layer) = self.layer_panel.show(ctx, self.current_stack.as_ref()) {
-            self.stack_viewer.set_selected_layer(Some(selected_layer.clone()));
+            self.stack_viewer
+                .set_selected_layer(Some(selected_layer.clone()));
             self.layer_panel.set_selected_layer(Some(selected_layer));
         }
 
@@ -76,47 +77,47 @@ impl MainWindow {
     fn handle_toolbar_action(&mut self, action: ToolbarAction) {
         match action {
             ToolbarAction::None => {}
-            
+
             ToolbarAction::OpenFile => {
                 self.open_file_dialog();
             }
-            
+
             ToolbarAction::Exit => {
                 std::process::exit(0);
             }
-            
+
             ToolbarAction::AutoFit => {
                 if let Some(ref stack) = self.current_stack {
                     self.stack_viewer.auto_fit(stack);
                 }
             }
-            
+
             ToolbarAction::ResetView => {
                 self.stack_viewer.reset_view();
             }
-            
+
             ToolbarAction::ZoomIn => {
                 self.stack_viewer.zoom_in();
             }
-            
+
             ToolbarAction::ZoomOut => {
                 self.stack_viewer.zoom_out();
             }
-            
+
             ToolbarAction::SetZoom(zoom) => {
                 self.stack_viewer.set_zoom(zoom);
             }
-            
+
             ToolbarAction::SetLayerWidth(width) => {
                 self.stack_viewer.set_layer_width(width);
                 self.toolbar.set_layer_width(width);
             }
-            
+
             ToolbarAction::ToggleDimensions(show) => {
                 self.stack_viewer.set_show_dimensions(show);
                 self.toolbar.set_show_dimensions(show);
             }
-            
+
             ToolbarAction::ToggleLayerNames(show) => {
                 self.stack_viewer.set_show_layer_names(show);
                 self.toolbar.set_show_layer_names(show);
@@ -126,22 +127,22 @@ impl MainWindow {
 
     fn load_stack(&mut self, stack: ProcessStack) {
         println!("Loading stack into viewer...");
-        
+
         self.current_stack = Some(stack);
-        
+
         // Auto-fit the new stack
         if let Some(ref stack) = self.current_stack {
             println!("Auto-fitting stack view...");
             self.stack_viewer.auto_fit(stack);
         }
-        
+
         // Clear any previous layer selection
         self.layer_panel.set_selected_layer(None);
         self.stack_viewer.set_selected_layer(None);
-        
+
         // Close file menu
         self.file_menu.is_open = false;
-        
+
         println!("Stack loaded successfully!");
     }
 
@@ -155,21 +156,23 @@ impl MainWindow {
                     ui.heading("ITF Viewer");
                     ui.label("Version 0.1.0");
                     ui.separator();
-                    
-                    ui.label("A cross-sectional viewer for ITF (Interconnect Technology Format) files.");
+
+                    ui.label(
+                        "A cross-sectional viewer for ITF (Interconnect Technology Format) files.",
+                    );
                     ui.label("Visualizes semiconductor process stacks with layers and vias.");
-                    
+
                     ui.separator();
-                    
+
                     ui.label("Features:");
                     ui.label("• Parse and display ITF process stacks");
                     ui.label("• Interactive pan, zoom, and layer selection");
                     ui.label("• Detailed layer property inspection");
                     ui.label("• Trapezoid visualization for metal layers");
                     ui.label("• Color-coded materials (copper/dielectric)");
-                    
+
                     ui.separator();
-                    
+
                     ui.label("Controls:");
                     ui.label("• Mouse wheel: Zoom in/out");
                     ui.label("• Drag: Pan view");
@@ -177,9 +180,9 @@ impl MainWindow {
                     ui.label("• Ctrl+R: Reset view");
                     ui.label("• Arrow keys: Pan view");
                     ui.label("• +/- keys: Zoom");
-                    
+
                     ui.separator();
-                    
+
                     if ui.button("Close").clicked() {
                         self.show_about = false;
                     }
@@ -232,13 +235,15 @@ impl MainWindow {
 
     fn load_file_from_path(&mut self, path: PathBuf) {
         println!("Loading ITF file: {}", path.display());
-        
+
         match std::fs::read_to_string(&path) {
             Ok(content) => {
                 println!("File content length: {} characters", content.len());
-                println!("First 200 characters of file:\n{}", 
-                    content.chars().take(200).collect::<String>());
-                
+                println!(
+                    "First 200 characters of file:\n{}",
+                    content.chars().take(200).collect::<String>()
+                );
+
                 match parse_itf_file(&content) {
                     Ok(stack) => {
                         let summary = stack.get_process_summary();
@@ -249,7 +254,7 @@ impl MainWindow {
                         println!("  Dielectric layers: {}", summary.dielectric_layers);
                         println!("  Via connections: {}", summary.via_connections);
                         println!("  Total height: {:.3} um", summary.total_height);
-                        
+
                         self.load_stack(stack);
                     }
                     Err(e) => {
@@ -277,13 +282,17 @@ impl MainWindow {
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new("Error").color(egui::Color32::RED).size(16.0));
+                        ui.label(
+                            egui::RichText::new("Error")
+                                .color(egui::Color32::RED)
+                                .size(16.0),
+                        );
                         ui.separator();
-                        
+
                         ui.label(error_msg);
-                        
+
                         ui.separator();
-                        
+
                         if ui.button("OK").clicked() {
                             self.error_message = None;
                         }
@@ -308,15 +317,22 @@ impl eframe::App for MainWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{TechnologyInfo, DielectricLayer, ConductorLayer, Layer};
+    use crate::data::{ConductorLayer, DielectricLayer, Layer, TechnologyInfo};
 
     fn create_test_stack() -> ProcessStack {
         let tech = TechnologyInfo::new("test_stack".to_string());
         let mut stack = ProcessStack::new(tech);
-        
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        
+
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+
         stack
     }
 
@@ -333,12 +349,12 @@ mod tests {
     fn test_stack_loading() {
         let mut window = MainWindow::new();
         let stack = create_test_stack();
-        
+
         assert!(!window.has_loaded_file());
         assert!(window.get_current_stack().is_none());
-        
+
         window.load_stack(stack);
-        
+
         assert!(window.has_loaded_file());
         assert!(window.get_current_stack().is_some());
         assert!(!window.file_menu.is_open);
@@ -348,10 +364,10 @@ mod tests {
     #[test]
     fn test_layer_selection() {
         let mut window = MainWindow::new();
-        
+
         window.select_layer(Some("metal1".to_string()));
         assert_eq!(window.get_selected_layer(), Some(&"metal1".to_string()));
-        
+
         window.select_layer(None);
         assert_eq!(window.get_selected_layer(), None);
     }
@@ -360,10 +376,10 @@ mod tests {
     fn test_about_dialog() {
         let mut window = MainWindow::new();
         assert!(!window.show_about);
-        
+
         window.set_show_about(true);
         assert!(window.show_about);
-        
+
         window.set_show_about(false);
         assert!(!window.show_about);
     }
@@ -372,10 +388,10 @@ mod tests {
     fn test_layer_panel_toggle() {
         let mut window = MainWindow::new();
         let initial_state = window.layer_panel.is_open;
-        
+
         window.toggle_layer_panel();
         assert_ne!(window.layer_panel.is_open, initial_state);
-        
+
         window.toggle_layer_panel();
         assert_eq!(window.layer_panel.is_open, initial_state);
     }
@@ -383,27 +399,27 @@ mod tests {
     #[test]
     fn test_toolbar_actions() {
         let mut window = MainWindow::new();
-        
+
         // Skip OpenFile test to avoid opening system file browser during automated tests
         // Instead, test file loading directly using a test file
         window.load_file_from_path(PathBuf::from("tests/data/real_world_test.itf"));
         assert!(window.has_loaded_file());
-        
+
         // Test reset view action (should not panic)
         window.handle_toolbar_action(ToolbarAction::ResetView);
-        
+
         // Test zoom actions
         window.handle_toolbar_action(ToolbarAction::ZoomIn);
         window.handle_toolbar_action(ToolbarAction::ZoomOut);
         window.handle_toolbar_action(ToolbarAction::SetZoom(2.0));
-        
+
         // Test display toggles
         window.handle_toolbar_action(ToolbarAction::ToggleDimensions(false));
         assert!(!window.toolbar.show_dimensions);
-        
+
         window.handle_toolbar_action(ToolbarAction::ToggleLayerNames(false));
         assert!(!window.toolbar.show_layer_names);
-        
+
         // Test layer width setting
         window.handle_toolbar_action(ToolbarAction::SetLayerWidth(300.0));
         assert_eq!(window.toolbar.layer_width, 300.0);
@@ -412,7 +428,7 @@ mod tests {
     #[test]
     fn test_auto_fit_without_stack() {
         let mut window = MainWindow::new();
-        
+
         // Should not panic when no stack is loaded
         window.handle_toolbar_action(ToolbarAction::AutoFit);
     }
@@ -422,10 +438,10 @@ mod tests {
         let mut window = MainWindow::new();
         let stack = create_test_stack();
         window.load_stack(stack);
-        
+
         // Should not panic when centering on existing layer
         window.center_on_layer("metal1");
-        
+
         // Should not panic when centering on non-existing layer
         window.center_on_layer("nonexistent");
     }

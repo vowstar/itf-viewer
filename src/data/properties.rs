@@ -39,7 +39,7 @@ impl LookupTable2D {
     pub fn lookup(&self, width: f64, spacing: f64) -> Option<f64> {
         let width_idx = self.find_index(&self.widths, width)?;
         let spacing_idx = self.find_index(&self.spacings, spacing)?;
-        
+
         self.values.get(spacing_idx)?.get(width_idx).copied()
     }
 
@@ -47,15 +47,15 @@ impl LookupTable2D {
         if array.is_empty() {
             return None;
         }
-        
+
         if value <= array[0] {
             return Some(0);
         }
-        
+
         if value >= array[array.len() - 1] {
             return Some(array.len() - 1);
         }
-        
+
         for i in 0..array.len() - 1 {
             if value >= array[i] && value <= array[i + 1] {
                 return if (value - array[i]).abs() < (value - array[i + 1]).abs() {
@@ -65,7 +65,7 @@ impl LookupTable2D {
                 };
             }
         }
-        
+
         None
     }
 }
@@ -85,15 +85,15 @@ impl LookupTable1D {
         if self.keys.is_empty() {
             return None;
         }
-        
+
         if key <= self.keys[0] {
             return self.values.first().copied();
         }
-        
+
         if key >= self.keys[self.keys.len() - 1] {
             return self.values.get(self.keys.len() - 1).copied();
         }
-        
+
         for i in 0..self.keys.len() - 1 {
             if key >= self.keys[i] && key <= self.keys[i + 1] {
                 let t = (key - self.keys[i]) / (self.keys[i + 1] - self.keys[i]);
@@ -102,7 +102,7 @@ impl LookupTable1D {
                 return Some(v1 + t * (v2 - v1));
             }
         }
-        
+
         None
     }
 }
@@ -121,25 +121,25 @@ impl ProcessVariation {
         if range_index >= self.polynomial_coefficients.len() {
             return 0.0;
         }
-        
+
         let coeffs = &self.polynomial_coefficients[range_index];
         let mut result = 0.0;
         let mut coeff_idx = 0;
-        
+
         for &d_order in &self.density_polynomial_orders {
             for &w_order in &self.width_polynomial_orders {
                 if coeff_idx < coeffs.len() {
-                    result += coeffs[coeff_idx] * 
-                             density.powi(d_order as i32) * 
-                             width.powi(w_order as i32);
+                    result += coeffs[coeff_idx]
+                        * density.powi(d_order as i32)
+                        * width.powi(w_order as i32);
                     coeff_idx += 1;
                 }
             }
         }
-        
+
         result
     }
-    
+
     fn find_width_range(&self, width: f64) -> usize {
         for (i, &range_limit) in self.width_ranges.iter().enumerate() {
             if width <= range_limit {
@@ -166,7 +166,7 @@ mod tests {
                 vec![7.0, 8.0, 9.0],
             ],
         );
-        
+
         assert_eq!(table.lookup(0.1, 0.05), Some(1.0));
         assert_eq!(table.lookup(0.3, 0.15), Some(9.0));
         assert_eq!(table.lookup(0.2, 0.1), Some(5.0));
@@ -174,11 +174,8 @@ mod tests {
 
     #[test]
     fn test_lookup_table_1d() {
-        let table = LookupTable1D::new(
-            vec![1.0, 2.0, 3.0],
-            vec![10.0, 20.0, 30.0],
-        );
-        
+        let table = LookupTable1D::new(vec![1.0, 2.0, 3.0], vec![10.0, 20.0, 30.0]);
+
         assert_eq!(table.lookup(1.0), Some(10.0));
         assert_eq!(table.lookup(3.0), Some(30.0));
         assert_relative_eq!(table.lookup(1.5).unwrap(), 15.0, epsilon = 1e-10);
@@ -190,12 +187,9 @@ mod tests {
             density_polynomial_orders: vec![0, 1],
             width_polynomial_orders: vec![0, 1],
             width_ranges: vec![1.0, 2.0],
-            polynomial_coefficients: vec![
-                vec![1.0, 2.0, 3.0, 4.0],
-                vec![5.0, 6.0, 7.0, 8.0],
-            ],
+            polynomial_coefficients: vec![vec![1.0, 2.0, 3.0, 4.0], vec![5.0, 6.0, 7.0, 8.0]],
         };
-        
+
         let result = variation.calculate_thickness_variation(0.5, 0.8);
         // Expected: coeffs[0]*density^0*width^0 + coeffs[1]*density^0*width^1 + coeffs[2]*density^1*width^0 + coeffs[3]*density^1*width^1
         // = 1.0*1*1 + 2.0*1*0.8 + 3.0*0.5*1 + 4.0*0.5*0.8 = 1.0 + 1.6 + 1.5 + 1.6 = 5.7

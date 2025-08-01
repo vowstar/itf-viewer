@@ -128,9 +128,7 @@ impl<'a> ItfLexer<'a> {
                     digit1,
                 ))),
             ))),
-            |num_str: &str| {
-                Token::Number(num_str.parse::<f64>().unwrap_or(0.0))
-            },
+            |num_str: &str| Token::Number(num_str.parse::<f64>().unwrap_or(0.0)),
         )(input)
     }
 
@@ -215,27 +213,24 @@ impl<'a> ItfLexer<'a> {
 pub enum LexError {
     #[error("Parse error: {0}")]
     ParseError(String),
-    
+
     #[error("Invalid number format: {0}")]
     InvalidNumber(String),
-    
+
     #[error("Unexpected character: {0}")]
     UnexpectedCharacter(char),
 }
 
 pub fn parse_number_list(input: &str) -> IResult<&str, Vec<f64>> {
     use nom::character::complete::{char as nom_char, space1};
-    
+
     preceded(
         multispace0,
         delimited(
             nom_char('{'),
             preceded(
                 multispace0,
-                separated_list0(
-                    space1,
-                    preceded(multispace0, double),
-                ),
+                separated_list0(space1, preceded(multispace0, double)),
             ),
             preceded(multispace0, nom_char('}')),
         ),
@@ -250,13 +245,7 @@ pub fn parse_2d_number_matrix(input: &str) -> IResult<&str, Vec<Vec<f64>>> {
             char('{'),
             preceded(
                 multispace0,
-                separated_list0(
-                    line_ending,
-                    separated_list1(
-                        space1,
-                        double,
-                    ),
-                ),
+                separated_list0(line_ending, separated_list1(space1, double)),
             ),
             preceded(multispace0, char('}')),
         ),
@@ -274,12 +263,7 @@ pub fn parse_identifier(input: &str) -> IResult<&str, String> {
 }
 
 pub fn parse_keyword(keyword: &str) -> impl Fn(&str) -> IResult<&str, ()> + '_ {
-    move |input: &str| {
-        preceded(
-            multispace0,
-            value((), tag(keyword)),
-        )(input)
-    }
+    move |input: &str| preceded(multispace0, value((), tag(keyword)))(input)
 }
 
 pub fn parse_equals(input: &str) -> IResult<&str, ()> {
@@ -302,7 +286,7 @@ mod tests {
     fn test_tokenize_basic() {
         let mut lexer = ItfLexer::new("TECHNOLOGY = test_tech");
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0], Token::Keyword("TECHNOLOGY".to_string()));
         assert_eq!(tokens[1], Token::Equals);
         assert_eq!(tokens[2], Token::Identifier("test_tech".to_string()));
@@ -312,7 +296,7 @@ mod tests {
     fn test_tokenize_numbers() {
         let mut lexer = ItfLexer::new("1.5 -2.3E-4 0.123");
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0], Token::Number(1.5));
         assert_eq!(tokens[1], Token::Number(-2.3e-4));
         assert_eq!(tokens[2], Token::Number(0.123));
@@ -322,7 +306,7 @@ mod tests {
     fn test_tokenize_braces() {
         let mut lexer = ItfLexer::new("DIELECTRIC oxide { THICKNESS=1.0 }");
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0], Token::Keyword("DIELECTRIC".to_string()));
         assert_eq!(tokens[1], Token::Identifier("oxide".to_string()));
         assert_eq!(tokens[2], Token::LeftBrace);
@@ -350,12 +334,16 @@ mod tests {
     fn test_comments() {
         let mut lexer = ItfLexer::new("TECHNOLOGY = test $$ This is a comment\nTHICKNESS = 1.0");
         let tokens = lexer.tokenize().unwrap();
-        
-        let non_comment_tokens: Vec<_> = tokens.into_iter()
+
+        let non_comment_tokens: Vec<_> = tokens
+            .into_iter()
             .filter(|t| !matches!(t, Token::Comment(_)))
             .collect();
-        
-        assert_eq!(non_comment_tokens[0], Token::Keyword("TECHNOLOGY".to_string()));
+
+        assert_eq!(
+            non_comment_tokens[0],
+            Token::Keyword("TECHNOLOGY".to_string())
+        );
         assert_eq!(non_comment_tokens[1], Token::Equals);
         assert_eq!(non_comment_tokens[2], Token::Identifier("test".to_string()));
     }

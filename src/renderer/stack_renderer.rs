@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use egui::{Pos2, Rect, Shape, Stroke, Color32};
-use crate::data::{ProcessStack, Layer};
+use crate::data::{Layer, ProcessStack};
 use crate::renderer::{colors::ColorScheme, geometry::*, thickness_scaler::ThicknessScaler};
+use egui::{Color32, Pos2, Rect, Shape, Stroke};
 use std::collections::HashMap;
 
 /// Parameters for creating a single layer geometry
@@ -50,8 +50,10 @@ impl StackRenderer {
         scaler.analyze_stack(stack);
 
         // Calculate layer positions and create geometries with proper stacking order
-        let layer_geometries = self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
-        let via_geometries = self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
+        let layer_geometries =
+            self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
+        let via_geometries =
+            self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
 
         // Separate geometries by layer type for proper z-ordering
         let mut dielectric_geometries = Vec::new();
@@ -88,7 +90,12 @@ impl StackRenderer {
 
         // Add dimension annotations
         if self.show_dimensions {
-            shapes.extend(self.create_dimension_shapes_with_scaler(stack, &scaler, transform, viewport_rect));
+            shapes.extend(self.create_dimension_shapes_with_scaler(
+                stack,
+                &scaler,
+                transform,
+                viewport_rect,
+            ));
         }
 
         // Add layer name labels
@@ -98,8 +105,6 @@ impl StackRenderer {
 
         shapes
     }
-
-
 
     pub fn create_layer_geometries_ordered(
         &self,
@@ -113,16 +118,13 @@ impl StackRenderer {
 
         // Calculate optimal layer width
         let total_exaggerated_height = scaler.get_exaggerated_total_height(stack);
-        let layer_width = calculate_optimal_layer_width(
-            total_exaggerated_height,
-            viewport_rect.width(),
-            50.0,
-        );
+        let layer_width =
+            calculate_optimal_layer_width(total_exaggerated_height, viewport_rect.width(), 50.0);
 
         // ITF layers are defined from top to bottom, but we need to render from bottom to top
         // So we reverse the layer order for rendering to match the physical stack
         let mut current_z = 0.0f32;
-        
+
         // First pass: process dielectric layers to establish their positions
         let mut dielectric_positions = Vec::new();
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
@@ -138,7 +140,7 @@ impl StackRenderer {
         // Second pass: create geometries for all layers, embedding conductors in their preceding dielectric
         current_z = 0.0f32;
         let mut dielectric_index = 0;
-        
+
         // Render layers in reverse ITF order (bottom to top physically)
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
             let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
@@ -155,7 +157,7 @@ impl StackRenderer {
                     // Find the dielectric layer that should contain this conductor
                     // In ITF order, the conductor should be embedded in the previous dielectric layer
                     let mut target_dielectric_bottom = 0.0f32;
-                    
+
                     // Look for the dielectric layer that appears right before this conductor in the original layer order
                     if layer_index > 0 {
                         if let Some(Layer::Dielectric(_)) = stack.layers.get(layer_index - 1) {
@@ -168,7 +170,7 @@ impl StackRenderer {
                             }
                         }
                     }
-                    
+
                     let bottom = target_dielectric_bottom;
                     let top = bottom + exaggerated_height;
                     (bottom, top)
@@ -205,7 +207,9 @@ impl StackRenderer {
         let screen_width = params.layer_width * transform.scale;
 
         let is_selected = self.selected_layer.as_deref() == Some(params.layer.name());
-        let base_color = self.color_scheme.get_layer_color(params.layer, params.layer_index);
+        let base_color = self
+            .color_scheme
+            .get_layer_color(params.layer, params.layer_index);
         let alpha = self.color_scheme.get_layer_alpha(params.layer, is_selected);
         let color = self.color_scheme.apply_alpha(base_color, alpha);
         let outline_color = self.color_scheme.get_layer_outline_color(is_selected);
@@ -247,7 +251,6 @@ impl StackRenderer {
         }
     }
 
-
     pub fn create_via_geometries_with_scaler(
         &self,
         stack: &ProcessStack,
@@ -268,7 +271,9 @@ impl StackRenderer {
             let from_bounds = layer_boundaries.get(&via.from_layer);
             let to_bounds = layer_boundaries.get(&via.to_layer);
 
-            if let (Some(&(from_bottom, from_top)), Some(&(to_bottom, to_top))) = (from_bounds, to_bounds) {
+            if let (Some(&(from_bottom, from_top)), Some(&(to_bottom, to_top))) =
+                (from_bounds, to_bounds)
+            {
                 // VIA should span from the surface of the FROM layer to the surface of the TO layer
                 let (via_z_start, via_z_end) = if from_bottom < to_bottom {
                     // FROM layer is below TO layer - VIA goes from top of FROM to bottom of TO
@@ -289,7 +294,9 @@ impl StackRenderer {
                 };
 
                 let offset_index = *via_offset_counter.entry(layer_pair).or_insert(0);
-                via_offset_counter.entry((via.from_layer.clone(), via.to_layer.clone())).and_modify(|x| *x += 1);
+                via_offset_counter
+                    .entry((via.from_layer.clone(), via.to_layer.clone()))
+                    .and_modify(|x| *x += 1);
 
                 // Horizontal offset to prevent VIAs from overlapping
                 let horizontal_offset = (offset_index as f32 - 0.5) * via_width * 1.5;
@@ -326,11 +333,14 @@ impl StackRenderer {
         geometries
     }
 
-
-    pub fn calculate_ordered_layer_boundaries(&self, stack: &ProcessStack, scaler: &ThicknessScaler) -> HashMap<String, (f32, f32)> {
+    pub fn calculate_ordered_layer_boundaries(
+        &self,
+        stack: &ProcessStack,
+        scaler: &ThicknessScaler,
+    ) -> HashMap<String, (f32, f32)> {
         let mut layer_boundaries = HashMap::new();
         let mut current_z = 0.0f32;
-        
+
         // First pass: process dielectric layers to establish their positions
         let mut dielectric_positions = Vec::new();
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
@@ -346,7 +356,7 @@ impl StackRenderer {
         // Second pass: calculate boundaries for all layers, embedding conductors in their preceding dielectric
         current_z = 0.0f32;
         let mut dielectric_index = 0;
-        
+
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
             let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
 
@@ -362,7 +372,7 @@ impl StackRenderer {
                     // Find the dielectric layer that should contain this conductor
                     // In ITF order, the conductor should be embedded in the previous dielectric layer
                     let mut target_dielectric_bottom = 0.0f32;
-                    
+
                     // Look for the dielectric layer that appears right before this conductor in the original layer order
                     if layer_index > 0 {
                         if let Some(Layer::Dielectric(_)) = stack.layers.get(layer_index - 1) {
@@ -375,19 +385,18 @@ impl StackRenderer {
                             }
                         }
                     }
-                    
+
                     let bottom = target_dielectric_bottom;
                     let top = bottom + exaggerated_height;
                     (bottom, top)
                 }
             };
-            
+
             layer_boundaries.insert(layer.name().to_string(), (z_bottom, z_top));
         }
-        
+
         layer_boundaries
     }
-
 
     fn create_dimension_shapes_with_scaler(
         &self,
@@ -401,7 +410,7 @@ impl StackRenderer {
         let dimension_x = viewport_rect.max.x - margin - 60.0;
 
         let mut current_z = 0.0f32;
-        
+
         // First pass: process dielectric layers to establish their positions
         let mut dielectric_positions = Vec::new();
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
@@ -417,7 +426,7 @@ impl StackRenderer {
         // Second pass: create dimension shapes for all layers
         current_z = 0.0f32;
         let mut dielectric_index = 0;
-        
+
         for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
             let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
 
@@ -432,7 +441,7 @@ impl StackRenderer {
                 Layer::Conductor(_) => {
                     // Find the dielectric layer that should contain this conductor
                     let mut target_dielectric_bottom = 0.0f32;
-                    
+
                     if layer_index > 0 {
                         if let Some(Layer::Dielectric(_)) = stack.layers.get(layer_index - 1) {
                             // Find this dielectric's position
@@ -444,7 +453,7 @@ impl StackRenderer {
                             }
                         }
                     }
-                    
+
                     let bottom = target_dielectric_bottom;
                     let top = bottom + exaggerated_height;
                     (bottom, top)
@@ -534,7 +543,8 @@ impl StackRenderer {
     ) -> Option<String> {
         let mut scaler = self.thickness_scaler.clone();
         scaler.analyze_stack(stack);
-        let layer_geometries = self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
+        let layer_geometries =
+            self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
 
         // Separate geometries by layer type for proper z-ordering hit testing
         let mut dielectric_geometries = Vec::new();
@@ -623,16 +633,27 @@ impl Clone for StackRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{TechnologyInfo, DielectricLayer, ConductorLayer};
+    use crate::data::{ConductorLayer, DielectricLayer, TechnologyInfo};
     use egui::Vec2;
 
     fn create_test_stack() -> ProcessStack {
         let tech = TechnologyInfo::new("test_stack".to_string());
         let mut stack = ProcessStack::new(tech);
 
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide2".to_string(), 1.5, 4.2)));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide2".to_string(),
+            1.5,
+            4.2,
+        )));
 
         stack
     }
@@ -710,16 +731,21 @@ mod tests {
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         assert_eq!(geometries.len(), stack.get_layer_count());
 
         // With embedded conductor logic, layers may overlap so we can't expect strict ordering
         // Instead, verify that all geometries have valid z positions
         for geometry in &geometries {
-            assert!(geometry.z_bottom < geometry.z_top, 
-                   "Layer {} should have bottom < top: {} < {}", 
-                   geometry.layer_name, geometry.z_bottom, geometry.z_top);
+            assert!(
+                geometry.z_bottom < geometry.z_top,
+                "Layer {} should have bottom < top: {} < {}",
+                geometry.layer_name,
+                geometry.z_bottom,
+                geometry.z_top
+            );
         }
     }
 
@@ -753,17 +779,32 @@ mod tests {
         let mut stack = ProcessStack::new(tech);
 
         // Add layers in mixed order: conductor, dielectric, conductor, dielectric
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("conductor1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("dielectric1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("conductor2".to_string(), 0.3))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("dielectric2".to_string(), 0.8, 4.2)));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "conductor1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "dielectric1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "conductor2".to_string(),
+            0.3,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "dielectric2".to_string(),
+            0.8,
+            4.2,
+        )));
 
         let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
         let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         // Should have 4 geometries
         assert_eq!(geometries.len(), 4);
@@ -780,22 +821,25 @@ mod tests {
         // So we need to verify the new embedding behavior instead of strict layer ordering
         let mut dielectric_layers = Vec::new();
         let mut conductor_layers = Vec::new();
-        
+
         for geometry in &geometries {
             match &geometry.shape {
                 LayerShape::ThreeColumnTrapezoid(_) => conductor_layers.push(geometry),
                 _ => dielectric_layers.push(geometry),
             }
         }
-        
+
         // Verify we have the expected number of each type
         assert_eq!(dielectric_layers.len(), 2);
         assert_eq!(conductor_layers.len(), 2);
-        
+
         // Verify that all layers have valid z positions
         for geometry in &geometries {
-            assert!(geometry.z_bottom < geometry.z_top, 
-                   "Layer {} should have bottom < top", geometry.layer_name);
+            assert!(
+                geometry.z_bottom < geometry.z_top,
+                "Layer {} should have bottom < top",
+                geometry.layer_name
+            );
         }
     }
 
@@ -808,14 +852,34 @@ mod tests {
         let mut stack = ProcessStack::new(tech);
 
         // Add layers: dielectric, conductor, dielectric, conductor
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide2".to_string(), 0.8, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.3))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide2".to_string(),
+            0.8,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.3,
+        ))));
 
         // Add a via connecting the two metal layers
         use crate::data::ViaConnection;
-        let via = ViaConnection::new("via12".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        let via = ViaConnection::new(
+            "via12".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
         stack.add_via(via);
 
         let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
@@ -830,7 +894,7 @@ mod tests {
         // With the new embedded conductor logic:
         // ITF order (top to bottom): oxide1, metal1, oxide2, metal2
         // Physical render order (bottom to top): oxide2, oxide1, with metals embedded
-        // - oxide2 is at the bottom (z=0 to z=oxide2_height) 
+        // - oxide2 is at the bottom (z=0 to z=oxide2_height)
         // - metal2 is embedded in oxide2 (z=0 to z=metal2_height)
         // - oxide1 is above oxide2 (z=oxide2_height to z=oxide2_height+oxide1_height)
         // - metal1 is embedded in oxide1 (z=oxide2_height to z=oxide2_height+metal1_height)
@@ -841,19 +905,32 @@ mod tests {
 
         // Verify the new embedded stacking order
         // In reverse ITF order, oxide2 comes first (bottom), then oxide1 (top)
-        assert!(oxide1_bounds.0 >= oxide2_bounds.1 - 1e-6, 
-               "oxide1 should be above oxide2: {} >= {}", oxide1_bounds.0, oxide2_bounds.1);
-        
+        assert!(
+            oxide1_bounds.0 >= oxide2_bounds.1 - 1e-6,
+            "oxide1 should be above oxide2: {} >= {}",
+            oxide1_bounds.0,
+            oxide2_bounds.1
+        );
+
         // metal2 should be embedded in oxide2 (same bottom)
-        assert!((metal2_bounds.0 - oxide2_bounds.0).abs() < 1e-6,
-               "metal2 should be embedded in oxide2 (same bottom): {} == {}", metal2_bounds.0, oxide2_bounds.0);
-        
+        assert!(
+            (metal2_bounds.0 - oxide2_bounds.0).abs() < 1e-6,
+            "metal2 should be embedded in oxide2 (same bottom): {} == {}",
+            metal2_bounds.0,
+            oxide2_bounds.0
+        );
+
         // metal1 should be embedded in oxide1 (same bottom)
-        assert!((metal1_bounds.0 - oxide1_bounds.0).abs() < 1e-6,
-               "metal1 should be embedded in oxide1 (same bottom): {} == {}", metal1_bounds.0, oxide1_bounds.0);
+        assert!(
+            (metal1_bounds.0 - oxide1_bounds.0).abs() < 1e-6,
+            "metal1 should be embedded in oxide1 (same bottom): {} == {}",
+            metal1_bounds.0,
+            oxide1_bounds.0
+        );
 
         // Create via geometries
-        let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
         assert_eq!(via_geometries.len(), 1);
 
         // Via should span between the two metal layers
@@ -863,7 +940,7 @@ mod tests {
         // Via should be positioned to connect the layer surfaces
         // It should span from top of metal1 to bottom of metal2 (or vice versa)
         let expected_start = metal1_bounds.1; // Top of metal1
-        let expected_end = metal2_bounds.0;   // Bottom of metal2
+        let expected_end = metal2_bounds.0; // Bottom of metal2
 
         // Since metal1 is above metal2 in our new structure, we need to check which one is actually higher
         let via_should_start = expected_start.min(expected_end);
@@ -871,10 +948,18 @@ mod tests {
 
         // Allow for some tolerance due to potential floating point precision issues
         let tolerance = 1e-3; // Increase tolerance slightly
-        assert!((via_geom.z_bottom - via_should_start).abs() < tolerance,
-               "Via should start at {}, but starts at {}", via_should_start, via_geom.z_bottom);
-        assert!((via_geom.z_top - via_should_end).abs() < tolerance,
-               "Via should end at {}, but ends at {}", via_should_end, via_geom.z_top);
+        assert!(
+            (via_geom.z_bottom - via_should_start).abs() < tolerance,
+            "Via should start at {}, but starts at {}",
+            via_should_start,
+            via_geom.z_bottom
+        );
+        assert!(
+            (via_geom.z_top - via_should_end).abs() < tolerance,
+            "Via should end at {}, but ends at {}",
+            via_should_end,
+            via_geom.z_top
+        );
     }
 
     #[test]
@@ -886,16 +971,28 @@ mod tests {
         let mut stack = ProcessStack::new(tech);
 
         // Add layers with different thicknesses: thin, thick, medium
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("thin".to_string(), 0.1, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("thick".to_string(), 2.0))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("medium".to_string(), 1.0, 4.2)));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "thin".to_string(),
+            0.1,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "thick".to_string(),
+            2.0,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "medium".to_string(),
+            1.0,
+            4.2,
+        )));
 
         let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
         let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         // Should have 3 geometries in reverse ITF order (bottom to top physically)
         // ITF order: thin, thick, medium (top to bottom in file)
@@ -953,7 +1050,8 @@ mod tests {
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         assert_eq!(geometries.len(), 1);
         let conductor_geometry = &geometries[0];
@@ -992,7 +1090,8 @@ mod tests {
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         assert_eq!(geometries.len(), 1);
         let conductor_geometry = &geometries[0];
@@ -1023,14 +1122,34 @@ mod tests {
         let mut stack = ProcessStack::new(tech);
 
         // Add layers in order: substrate, metal1, oxide, metal2
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("substrate".to_string(), 1.0, 11.7)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 0.8, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.3))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "substrate".to_string(),
+            1.0,
+            11.7,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide".to_string(),
+            0.8,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.3,
+        ))));
 
         // Add VIA connecting metal1 to metal2
         use crate::data::ViaConnection;
-        let via = ViaConnection::new("via_m1_m2".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        let via = ViaConnection::new(
+            "via_m1_m2".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
         stack.add_via(via);
 
         let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
@@ -1054,31 +1173,52 @@ mod tests {
 
         // Verify layer ordering with embedded logic
         // oxide should be above substrate
-        assert!(oxide_bounds.0 >= substrate_bounds.1 - 1e-6, 
-               "oxide should be above substrate: {} >= {}", oxide_bounds.0, substrate_bounds.1);
-        
+        assert!(
+            oxide_bounds.0 >= substrate_bounds.1 - 1e-6,
+            "oxide should be above substrate: {} >= {}",
+            oxide_bounds.0,
+            substrate_bounds.1
+        );
+
         // metal1 should be embedded in substrate (same bottom)
-        assert!((metal1_bounds.0 - substrate_bounds.0).abs() < 1e-6,
-               "metal1 should be embedded in substrate: {} == {}", metal1_bounds.0, substrate_bounds.0);
-        
+        assert!(
+            (metal1_bounds.0 - substrate_bounds.0).abs() < 1e-6,
+            "metal1 should be embedded in substrate: {} == {}",
+            metal1_bounds.0,
+            substrate_bounds.0
+        );
+
         // metal2 should be embedded in oxide (same bottom)
-        assert!((metal2_bounds.0 - oxide_bounds.0).abs() < 1e-6,
-               "metal2 should be embedded in oxide: {} == {}", metal2_bounds.0, oxide_bounds.0);
+        assert!(
+            (metal2_bounds.0 - oxide_bounds.0).abs() < 1e-6,
+            "metal2 should be embedded in oxide: {} == {}",
+            metal2_bounds.0,
+            oxide_bounds.0
+        );
 
         // Create VIA geometries
-        let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
         assert_eq!(via_geometries.len(), 1);
 
         let via_geom = &via_geometries[0];
 
         // VIA should span from the top surface of metal1 to the bottom surface of metal2
         let expected_via_start = metal1_bounds.1; // Top of metal1
-        let expected_via_end = metal2_bounds.0;   // Bottom of metal2
+        let expected_via_end = metal2_bounds.0; // Bottom of metal2
 
-        assert!((via_geom.z_bottom - expected_via_start.min(expected_via_end)).abs() < 1e-6,
-               "Via should start at {}, but starts at {}", expected_via_start.min(expected_via_end), via_geom.z_bottom);
-        assert!((via_geom.z_top - expected_via_start.max(expected_via_end)).abs() < 1e-6,
-               "Via should end at {}, but ends at {}", expected_via_start.max(expected_via_end), via_geom.z_top);
+        assert!(
+            (via_geom.z_bottom - expected_via_start.min(expected_via_end)).abs() < 1e-6,
+            "Via should start at {}, but starts at {}",
+            expected_via_start.min(expected_via_end),
+            via_geom.z_bottom
+        );
+        assert!(
+            (via_geom.z_top - expected_via_start.max(expected_via_end)).abs() < 1e-6,
+            "Via should end at {}, but ends at {}",
+            expected_via_start.max(expected_via_end),
+            via_geom.z_top
+        );
     }
 
     #[test]
@@ -1089,14 +1229,38 @@ mod tests {
         let tech = TechnologyInfo::new("test_multi_via".to_string());
         let mut stack = ProcessStack::new(tech);
 
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.3))));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.3,
+        ))));
 
         // Add multiple VIAs between the same layers
         use crate::data::ViaConnection;
-        let via1 = ViaConnection::new("via1".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
-        let via2 = ViaConnection::new("via2".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
-        let via3 = ViaConnection::new("via3".to_string(), "metal1".to_string(), "metal2".to_string(), 0.25, 5.0);
+        let via1 = ViaConnection::new(
+            "via1".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
+        let via2 = ViaConnection::new(
+            "via2".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
+        let via3 = ViaConnection::new(
+            "via3".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
 
         stack.add_via(via1);
         stack.add_via(via2);
@@ -1109,7 +1273,8 @@ mod tests {
         scaler.analyze_stack(&stack);
 
         // Create VIA geometries
-        let via_geometries = renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
         assert_eq!(via_geometries.len(), 3);
 
         // VIAs should have different horizontal positions (to avoid overlap)
@@ -1158,23 +1323,31 @@ mod tests {
         let mut stack = ProcessStack::new(tech);
 
         // Add layers: dielectric first, then conductor embedded in it
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 2.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal".to_string(), 0.5))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide".to_string(),
+            2.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal".to_string(),
+            0.5,
+        ))));
 
         let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
         let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
 
         let mut scaler = ThicknessScaler::new();
         scaler.analyze_stack(&stack);
-        let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+        let geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
 
         // Verify we have both layers
         assert_eq!(geometries.len(), 2);
-        
+
         // Find the bounds for each layer
         let mut oxide_bounds = Rect::NOTHING;
         let mut metal_bounds = Rect::NOTHING;
-        
+
         for geometry in &geometries {
             let bounds = geometry.get_bounds();
             if geometry.layer_name == "oxide" {
@@ -1185,32 +1358,48 @@ mod tests {
         }
 
         // Verify both bounds are valid
-        assert!(oxide_bounds.width() > 0.0 && oxide_bounds.height() > 0.0, "Oxide bounds should be valid");
-        assert!(metal_bounds.width() > 0.0 && metal_bounds.height() > 0.0, "Metal bounds should be valid");
+        assert!(
+            oxide_bounds.width() > 0.0 && oxide_bounds.height() > 0.0,
+            "Oxide bounds should be valid"
+        );
+        assert!(
+            metal_bounds.width() > 0.0 && metal_bounds.height() > 0.0,
+            "Metal bounds should be valid"
+        );
 
         // Verify layers overlap (metal is embedded in oxide)
-        assert!(oxide_bounds.intersects(metal_bounds), "Oxide and metal layers should overlap");
+        assert!(
+            oxide_bounds.intersects(metal_bounds),
+            "Oxide and metal layers should overlap"
+        );
 
         // Test hit detection in the overlapping region
         let overlap_center = metal_bounds.center();
-        
+
         // Point in the overlapping region should hit the conductor (metal) first
         let hit_result = renderer.hit_test(&stack, &transform, viewport_rect, overlap_center);
-        assert_eq!(hit_result, Some("metal".to_string()), 
-                  "Hit test in overlapping region should return conductor layer (higher z-index)");
+        assert_eq!(
+            hit_result,
+            Some("metal".to_string()),
+            "Hit test in overlapping region should return conductor layer (higher z-index)"
+        );
 
         // Test a point that's in the dielectric but outside the metal bounds
         // Use a point that's definitely in the oxide bounds but far from metal
         let oxide_only_point = Pos2::new(
             oxide_bounds.min.x + oxide_bounds.width() * 0.1, // 10% from left edge
-            oxide_bounds.center().y
+            oxide_bounds.center().y,
         );
-        
+
         // Verify this point is in oxide bounds
         if oxide_bounds.contains(oxide_only_point) && !metal_bounds.contains(oxide_only_point) {
-            let hit_result_oxide = renderer.hit_test(&stack, &transform, viewport_rect, oxide_only_point);
-            assert_eq!(hit_result_oxide, Some("oxide".to_string()), 
-                      "Hit test in oxide-only region should return dielectric layer");
+            let hit_result_oxide =
+                renderer.hit_test(&stack, &transform, viewport_rect, oxide_only_point);
+            assert_eq!(
+                hit_result_oxide,
+                Some("oxide".to_string()),
+                "Hit test in oxide-only region should return dielectric layer"
+            );
         } else {
             // If we can't find a non-overlapping point, just verify that the overlapping test works
             println!("Note: All points in oxide are covered by metal, which is expected for embedded conductors");

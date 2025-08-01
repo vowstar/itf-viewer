@@ -26,7 +26,8 @@ impl ItfParser {
         // let _tokens = lexer.tokenize()
         //     .map_err(|e| ParseError::LexError(format!("{e:?}")))?;
 
-        let (remaining, technology_info) = self.parse_header(content)
+        let (remaining, technology_info) = self
+            .parse_header(content)
             .map_err(|e| ParseError::ParseError(format!("Header parse error: {e:?}")))?;
 
         let mut stack = ProcessStack::new(technology_info);
@@ -43,7 +44,7 @@ impl ItfParser {
                 }
                 continue;
             }
-            
+
             if let Ok((rest, layer)) = self.parse_dielectric_layer(remaining) {
                 stack.add_layer(Layer::Dielectric(layer));
                 remaining = rest;
@@ -54,28 +55,42 @@ impl ItfParser {
                 stack.add_via(via);
                 remaining = rest;
             } else if let Ok((rest, temp)) = preceded(
-                tuple((multispace0, parse_keyword("GLOBAL_TEMPERATURE"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("GLOBAL_TEMPERATURE"),
+                    parse_equals,
+                )),
                 preceded(multispace0, double),
-            )(remaining) {
+            )(remaining)
+            {
                 stack.technology_info.global_temperature = Some(temp);
                 remaining = rest;
             } else if let Ok((rest, direction)) = preceded(
-                tuple((multispace0, parse_keyword("REFERENCE_DIRECTION"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("REFERENCE_DIRECTION"),
+                    parse_equals,
+                )),
                 preceded(multispace0, parse_identifier),
-            )(remaining) {
+            )(remaining)
+            {
                 stack.technology_info.reference_direction = Some(direction);
                 remaining = rest;
             } else if let Ok((rest, er)) = preceded(
                 tuple((multispace0, parse_keyword("BACKGROUND_ER"), parse_equals)),
                 preceded(multispace0, double),
-            )(remaining) {
+            )(remaining)
+            {
                 stack.technology_info.background_er = Some(er);
                 remaining = rest;
             } else {
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
                 let skipped_line = &remaining[..next_line_end];
                 if !skipped_line.trim().is_empty() && !skipped_line.trim().starts_with("$") {
-                    eprintln!("Warning: Skipping unrecognized line: {}", skipped_line.trim());
+                    eprintln!(
+                        "Warning: Skipping unrecognized line: {}",
+                        skipped_line.trim()
+                    );
                 }
                 remaining = &remaining[next_line_end..];
                 if remaining.starts_with('\n') {
@@ -157,16 +172,24 @@ impl ItfParser {
                 }
                 continue;
             }
-            
+
             if let Ok((rest, temp)) = preceded(
-                tuple((multispace0, parse_keyword("GLOBAL_TEMPERATURE"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("GLOBAL_TEMPERATURE"),
+                    parse_equals,
+                )),
                 preceded(multispace0, double),
             )(remaining)
             {
                 tech_info.global_temperature = Some(temp);
                 remaining = rest;
             } else if let Ok((rest, direction)) = preceded(
-                tuple((multispace0, parse_keyword("REFERENCE_DIRECTION"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("REFERENCE_DIRECTION"),
+                    parse_equals,
+                )),
                 preceded(multispace0, parse_identifier),
             )(remaining)
             {
@@ -180,7 +203,11 @@ impl ItfParser {
                 tech_info.background_er = Some(er);
                 remaining = rest;
             } else if let Ok((rest, factor)) = preceded(
-                tuple((multispace0, parse_keyword("HALF_NODE_SCALE_FACTOR"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("HALF_NODE_SCALE_FACTOR"),
+                    parse_equals,
+                )),
                 preceded(multispace0, double),
             )(remaining)
             {
@@ -188,16 +215,23 @@ impl ItfParser {
                 remaining = rest;
             } else if let Ok((rest, use_si)) = preceded(
                 tuple((multispace0, parse_keyword("USE_SI_DENSITY"), parse_equals)),
-                preceded(multispace0, alt((
-                    value(true, parse_keyword("YES")),
-                    value(false, parse_keyword("NO")),
-                ))),
+                preceded(
+                    multispace0,
+                    alt((
+                        value(true, parse_keyword("YES")),
+                        value(false, parse_keyword("NO")),
+                    )),
+                ),
             )(remaining)
             {
                 tech_info.use_si_density = Some(use_si);
                 remaining = rest;
             } else if let Ok((rest, drop_factor)) = preceded(
-                tuple((multispace0, parse_keyword("DROP_FACTOR_LATERAL_SPACING"), parse_equals)),
+                tuple((
+                    multispace0,
+                    parse_keyword("DROP_FACTOR_LATERAL_SPACING"),
+                    parse_equals,
+                )),
                 preceded(multispace0, double),
             )(remaining)
             {
@@ -223,7 +257,8 @@ impl ItfParser {
 
         layer.thickness = properties.get("THICKNESS").copied().unwrap_or(0.0);
         layer.dielectric_constant = properties.get("ER").copied().unwrap_or(1.0);
-        layer.measured_from = properties.get("MEASURED_FROM")
+        layer.measured_from = properties
+            .get("MEASURED_FROM")
             .map(|_| "TOP_OF_CHIP".to_string());
         layer.sw_t = properties.get("SW_T").copied();
         layer.tw_t = properties.get("TW_T").copied();
@@ -233,7 +268,10 @@ impl ItfParser {
         Ok((input, layer))
     }
 
-    fn parse_dielectric_properties<'a>(&self, input: &'a str) -> IResult<&'a str, HashMap<String, f64>> {
+    fn parse_dielectric_properties<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, HashMap<String, f64>> {
         let mut properties = HashMap::new();
         let mut remaining = input;
 
@@ -246,10 +284,7 @@ impl ItfParser {
             {
                 properties.insert(prop_name.to_uppercase(), value);
                 remaining = rest;
-            } else if let Ok((rest, prop_name)) = preceded(
-                multispace0,
-                parse_identifier,
-            )(remaining)
+            } else if let Ok((rest, prop_name)) = preceded(multispace0, parse_identifier)(remaining)
             {
                 if prop_name.to_uppercase() == "MEASURED_FROM" {
                     if let Ok((rest2, _)) = preceded(
@@ -291,7 +326,11 @@ impl ItfParser {
         Ok((input, layer))
     }
 
-    fn parse_conductor_properties<'a>(&self, input: &'a str, layer: &mut ConductorLayer) -> IResult<&'a str, ()> {
+    fn parse_conductor_properties<'a>(
+        &self,
+        input: &'a str,
+        layer: &mut ConductorLayer,
+    ) -> IResult<&'a str, ()> {
         let mut remaining = input;
 
         while !remaining.trim_start().starts_with('}') && !remaining.trim().is_empty() {
@@ -374,7 +413,10 @@ impl ItfParser {
                 layer.thickness_vs_width_spacing = Some(table);
                 remaining = rest;
             } else if let Ok((rest, _)) = preceded(
-                tuple((multispace0, parse_keyword("POLYNOMIAL_BASED_THICKNESS_VARIATION"))),
+                tuple((
+                    multispace0,
+                    parse_keyword("POLYNOMIAL_BASED_THICKNESS_VARIATION"),
+                )),
                 |input| self.skip_complex_block(input),
             )(remaining)
             {
@@ -405,7 +447,7 @@ impl ItfParser {
 
     fn parse_lookup_table_2d<'a>(&self, input: &'a str) -> IResult<&'a str, LookupTable2D> {
         let (input, _) = preceded(multispace0, parse_left_brace)(input)?;
-        
+
         let (input, widths) = preceded(
             tuple((multispace0, parse_keyword("WIDTHS"))),
             parse_number_list,
@@ -529,7 +571,10 @@ impl ItfParser {
 
         let (input, _) = preceded(multispace0, parse_right_brace)(remaining)?;
 
-        Ok((input, ViaConnection::new(name, from_layer, to_layer, area, rpv)))
+        Ok((
+            input,
+            ViaConnection::new(name, from_layer, to_layer, area, rpv),
+        ))
     }
 }
 
@@ -543,13 +588,13 @@ impl Default for ItfParser {
 pub enum ParseError {
     #[error("Lexical analysis error: {0}")]
     LexError(String),
-    
+
     #[error("Parse error: {0}")]
     ParseError(String),
-    
+
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
+
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -578,7 +623,7 @@ VIA via1 { FROM=metal1 TO=oxide2 AREA=0.04 RPV=5.0 }
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.technology_info.name, "test_tech");
         assert_eq!(stack.technology_info.global_temperature, Some(25.0));
@@ -590,10 +635,10 @@ VIA via1 { FROM=metal1 TO=oxide2 AREA=0.04 RPV=5.0 }
     fn test_parse_dielectric_layer() {
         let parser = ItfParser::new();
         let input = "DIELECTRIC test_oxide {THICKNESS=1.5 ER=3.9 MEASURED_FROM=TOP_OF_CHIP}";
-        
+
         let result = parser.parse_dielectric_layer(input);
         assert!(result.is_ok());
-        
+
         let (_, layer) = result.unwrap();
         assert_eq!(layer.name, "test_oxide");
         assert_eq!(layer.thickness, 1.5);
@@ -603,11 +648,12 @@ VIA via1 { FROM=metal1 TO=oxide2 AREA=0.04 RPV=5.0 }
     #[test]
     fn test_parse_conductor_layer() {
         let parser = ItfParser::new();
-        let input = "CONDUCTOR test_metal {THICKNESS=0.8 CRT1=2.5e-3 SIDE_TANGENT=0.05 WMIN=0.2 SMIN=0.15}";
-        
+        let input =
+            "CONDUCTOR test_metal {THICKNESS=0.8 CRT1=2.5e-3 SIDE_TANGENT=0.05 WMIN=0.2 SMIN=0.15}";
+
         let result = parser.parse_conductor_layer(input);
         assert!(result.is_ok());
-        
+
         let (_, layer) = result.unwrap();
         assert_eq!(layer.name, "test_metal");
         assert_eq!(layer.thickness, 0.8);
@@ -621,10 +667,10 @@ VIA via1 { FROM=metal1 TO=oxide2 AREA=0.04 RPV=5.0 }
     fn test_parse_via() {
         let parser = ItfParser::new();
         let input = "VIA test_via { FROM=layer1 TO=layer2 AREA=0.025 RPV=10.0 }";
-        
+
         let result = parser.parse_via(input);
         assert!(result.is_ok());
-        
+
         let (_, via) = result.unwrap();
         assert_eq!(via.name, "test_via");
         assert_eq!(via.from_layer, "layer1");
@@ -640,10 +686,10 @@ VIA via1 { FROM=metal1 TO=oxide2 AREA=0.04 RPV=5.0 }
 GLOBAL_TEMPERATURE = 85.0
 REFERENCE_DIRECTION = VERTICAL
 BACKGROUND_ER = 3.0"#;
-        
+
         let result = parser.parse_header(input);
         assert!(result.is_ok());
-        
+
         let (_, tech_info) = result.unwrap();
         assert_eq!(tech_info.name, "advanced_tech");
         assert_eq!(tech_info.global_temperature, Some(85.0));
@@ -705,7 +751,7 @@ VIA via1 {
             println!("Comment test parse error: {e:?}");
         }
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.technology_info.name, "test_node_28nm");
         assert_eq!(stack.technology_info.global_temperature, Some(25.0));
@@ -746,10 +792,10 @@ DIELECTRIC imd2 {
             println!("Complex conductor test parse error: {e:?}");
         }
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.get_layer_count(), 2);
-        
+
         // Verify conductor properties
         if let Some(Layer::Conductor(metal)) = stack.layers.first() {
             assert_eq!(metal.name, "metal2");
@@ -791,11 +837,11 @@ VIA via23 {
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.get_layer_count(), 5);
         assert_eq!(stack.get_via_count(), 2);
-        
+
         // Verify via properties
         let via1 = &stack.via_stack.vias[0];
         assert_eq!(via1.name, "via12");
@@ -880,14 +926,17 @@ CONDUCTOR metal1 {
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.get_layer_count(), 6);
         assert_eq!(stack.get_via_count(), 3);
-        
+
         // Verify poly gate properties
-        if let Some(Layer::Conductor(poly)) = stack.layers.iter()
-            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "poly_gate")) {
+        if let Some(Layer::Conductor(poly)) = stack
+            .layers
+            .iter()
+            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "poly_gate"))
+        {
             assert_eq!(poly.electrical_props.rpsq, Some(8.5));
             assert_eq!(poly.physical_props.width_min, Some(0.100));
             assert_eq!(poly.physical_props.spacing_min, Some(0.140));
@@ -942,14 +991,17 @@ VIA via5 { FROM = metal5 TO = metal6 AREA = 0.0400 RPV = 8.0 }
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.get_layer_count(), 13); // 6 metals + 7 dielectrics
         assert_eq!(stack.get_via_count(), 5);
-        
+
         // Verify thick top metal
-        if let Some(Layer::Conductor(metal6)) = stack.layers.iter()
-            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "metal6")) {
+        if let Some(Layer::Conductor(metal6)) = stack
+            .layers
+            .iter()
+            .find(|layer| matches!(layer, Layer::Conductor(c) if c.name == "metal6"))
+        {
             assert_eq!(metal6.thickness, 1.200);
             assert_eq!(metal6.electrical_props.rpsq, Some(0.020));
         } else {
@@ -987,10 +1039,10 @@ VIA test_via {
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.technology_info.global_temperature, Some(25.0));
-        
+
         if let Some(Layer::Conductor(metal)) = stack.layers.first() {
             assert!((metal.thickness - 0.45).abs() < 1e-6);
             assert!((metal.electrical_props.crt1.unwrap() - 3.88e-3).abs() < 1e-9);
@@ -1040,10 +1092,10 @@ DIELECTRIC simple_oxide {
 
         let result = parse_itf_file(itf_content);
         assert!(result.is_ok());
-        
+
         let stack = result.unwrap();
         assert_eq!(stack.get_layer_count(), 2);
-        
+
         if let Some(Layer::Conductor(metal)) = stack.layers.first() {
             assert_eq!(metal.name, "advanced_metal");
             assert_eq!(metal.thickness, 0.400);

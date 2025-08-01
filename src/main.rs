@@ -2,20 +2,20 @@
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
 //! ITF Viewer Application
-//! 
-//! A cross-platform GUI application for viewing and analyzing ITF 
+//!
+//! A cross-platform GUI application for viewing and analyzing ITF
 //! (Interconnect Technology Format) files used in semiconductor process design.
 
-use itf_viewer::{run_app, get_default_config, parse_itf_from_file};
+use itf_viewer::{get_default_config, parse_itf_from_file, run_app};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::init();
-    
+
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
-    
+
     match args.len() {
         1 => {
             // No arguments - run GUI application
@@ -49,20 +49,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_gui_app() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting ITF Viewer...");
-    
+
     let config = get_default_config();
     run_app(config).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 fn run_with_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading ITF file: {file_path}");
-    
+
     // Validate and parse the file
     match parse_itf_from_file(file_path) {
         Ok(stack) => {
             // Print file information
             print_file_info(&stack);
-            
+
             // Start GUI with the loaded file
             println!("Starting ITF Viewer with loaded file...");
             let config = get_default_config();
@@ -77,7 +77,7 @@ fn run_with_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_file_info(stack: &itf_viewer::ProcessStack) {
     let summary = stack.get_process_summary();
-    
+
     println!("ITF File Information:");
     println!("  Technology: {}", summary.technology_name);
     println!("  Total layers: {}", summary.total_layers);
@@ -85,11 +85,11 @@ fn print_file_info(stack: &itf_viewer::ProcessStack) {
     println!("  Dielectric layers: {}", summary.dielectric_layers);
     println!("  Metal layers: {}", summary.metal_layers);
     println!("  Via connections: {}", summary.via_connections);
-    
+
     if let Some(temp) = summary.global_temperature {
         println!("  Global temperature: {temp:.1}°C");
     }
-    
+
     println!("  Total stack height: {:.3} um", summary.total_height);
     println!();
 }
@@ -132,9 +132,18 @@ fn print_help() {
     println!("    • +/- keys: Zoom");
     println!();
     println!("EXAMPLES:");
-    println!("    {}                           # Start GUI application", env!("CARGO_PKG_NAME"));
-    println!("    {} process.itf               # Load and display ITF file", env!("CARGO_PKG_NAME"));
-    println!("    {} --version                 # Show version information", env!("CARGO_PKG_NAME"));
+    println!(
+        "    {}                           # Start GUI application",
+        env!("CARGO_PKG_NAME")
+    );
+    println!(
+        "    {} process.itf               # Load and display ITF file",
+        env!("CARGO_PKG_NAME")
+    );
+    println!(
+        "    {} --version                 # Show version information",
+        env!("CARGO_PKG_NAME")
+    );
 }
 
 fn print_version() {
@@ -142,12 +151,22 @@ fn print_version() {
     println!("{}", itf_viewer::DESCRIPTION);
     println!();
     println!("Build information:");
-    println!("  Profile: {}", if cfg!(debug_assertions) { "debug" } else { "release" });
+    println!(
+        "  Profile: {}",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
 }
 
 fn print_usage() {
     eprintln!("Usage: {} [OPTIONS] [FILE]", env!("CARGO_PKG_NAME"));
-    eprintln!("Try '{} --help' for more information.", env!("CARGO_PKG_NAME"));
+    eprintln!(
+        "Try '{} --help' for more information.",
+        env!("CARGO_PKG_NAME")
+    );
 }
 
 // Handle Ctrl+C gracefully
@@ -156,7 +175,8 @@ fn setup_signal_handlers() {
     ctrlc::set_handler(move || {
         println!("\nReceived Ctrl+C, shutting down gracefully...");
         std::process::exit(0);
-    }).expect("Error setting Ctrl+C handler");
+    })
+    .expect("Error setting Ctrl+C handler");
 }
 
 #[cfg(test)]
@@ -174,12 +194,16 @@ mod tests {
 
     #[test]
     fn test_print_file_info() {
-        use itf_viewer::data::{TechnologyInfo, ProcessStack, Layer, DielectricLayer};
-        
+        use itf_viewer::data::{DielectricLayer, Layer, ProcessStack, TechnologyInfo};
+
         let tech = TechnologyInfo::new("test_tech".to_string());
         let mut stack = ProcessStack::new(tech);
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 1.0, 4.2)));
-        
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide".to_string(),
+            1.0,
+            4.2,
+        )));
+
         // Should not panic
         print_file_info(&stack);
     }

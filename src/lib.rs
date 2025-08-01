@@ -2,28 +2,28 @@
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
 //! ITF Viewer Library
-//! 
+//!
 //! A Rust library for parsing and visualizing ITF (Interconnect Technology Format) files
 //! used in semiconductor process technology definitions.
-//! 
+//!
 //! # Features
-//! 
+//!
 //! - Parse ITF files with comprehensive error handling
 //! - Represent process stacks with layers, vias, and electrical properties
 //! - Render cross-sectional visualizations with proper color coding
 //! - Interactive GUI with pan, zoom, and layer selection
 //! - Support for trapezoid shapes representing etched/deposited metals
-//! 
+//!
 //! # Usage
-//! 
+//!
 //! ```rust,no_run
 //! use itf_viewer::parser::parse_itf_file;
-//! 
+//!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Parse an ITF file
 //! let content = std::fs::read_to_string("example.itf")?;
 //! let stack = parse_itf_file(&content)?;
-//! 
+//!
 //! // Get process summary
 //! let summary = stack.get_process_summary();
 //! println!("Technology: {}", summary.technology_name);
@@ -31,11 +31,11 @@
 //! # Ok(())
 //! # }
 //! ```
-//! 
+//!
 //! # Architecture
-//! 
+//!
 //! The library is organized into several modules:
-//! 
+//!
 //! - `data`: Core data structures for layers, vias, and process stacks
 //! - `parser`: ITF file parsing with lexical analysis and syntax parsing
 //! - `renderer`: Visualization rendering with colors and geometry
@@ -43,9 +43,9 @@
 //! - `utils`: Utility functions for file I/O and helpers
 
 pub mod data;
+pub mod gui;
 pub mod parser;
 pub mod renderer;
-pub mod gui;
 pub mod utils;
 
 #[cfg(test)]
@@ -53,20 +53,17 @@ mod integration_tests;
 
 // Re-export commonly used types
 pub use data::{
-    ProcessStack, Layer, DielectricLayer, ConductorLayer, ViaConnection,
-    TechnologyInfo, LayerType, ViaType,
+    ConductorLayer, DielectricLayer, Layer, LayerType, ProcessStack, TechnologyInfo, ViaConnection,
+    ViaType,
 };
 
-pub use parser::{parse_itf_file, ParseError, ItfParser};
+pub use parser::{parse_itf_file, ItfParser, ParseError};
 
 pub use renderer::{
-    StackRenderer, ColorScheme, ViewTransform, LayerGeometry,
-    TrapezoidShape, RectangleShape,
+    ColorScheme, LayerGeometry, RectangleShape, StackRenderer, TrapezoidShape, ViewTransform,
 };
 
-pub use gui::{
-    MainWindow, StackViewer, LayerPanel, FileMenu, Toolbar,
-};
+pub use gui::{FileMenu, LayerPanel, MainWindow, StackViewer, Toolbar};
 
 /// Library version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -83,22 +80,22 @@ pub fn get_library_info() -> String {
 }
 
 /// Parse an ITF file from a file path
-/// 
+///
 /// This is a convenience function that reads the file and parses it.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `file_path` - Path to the ITF file
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `Result<ProcessStack, Box<dyn std::error::Error>>` - The parsed process stack or error
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust,no_run
 /// use itf_viewer::parse_itf_from_file;
-/// 
+///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let stack = parse_itf_from_file("example.itf")?;
 /// println!("Loaded stack with {} layers", stack.get_layer_count());
@@ -114,23 +111,23 @@ pub fn parse_itf_from_file<P: AsRef<std::path::Path>>(
 }
 
 /// Validate an ITF file without full parsing
-/// 
+///
 /// This function performs a quick validation check on an ITF file
 /// to determine if it appears to be a valid ITF format.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `content` - The ITF file content as a string
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `bool` - True if the file appears to be valid ITF format
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust,no_run
 /// use itf_viewer::validate_itf_content;
-/// 
+///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let content = std::fs::read_to_string("example.itf")?;
 /// if validate_itf_content(&content) {
@@ -143,28 +140,28 @@ pub fn validate_itf_content(content: &str) -> bool {
     // Basic validation - check for required keywords
     let required_keywords = ["TECHNOLOGY"];
     let content_upper = content.to_uppercase();
-    
+
     for keyword in &required_keywords {
         if !content_upper.contains(keyword) {
             return false;
         }
     }
-    
+
     // Check for at least one layer definition
     let layer_keywords = ["DIELECTRIC", "CONDUCTOR"];
     let has_layers = layer_keywords
         .iter()
         .any(|keyword| content_upper.contains(keyword));
-    
+
     has_layers
 }
 
 /// Get default application configuration
-/// 
+///
 /// Returns a default configuration suitable for most use cases.
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `AppConfig` - Default application configuration
 pub fn get_default_config() -> AppConfig {
     AppConfig::default()
@@ -204,22 +201,22 @@ impl Default for AppConfig {
 }
 
 /// Create and run the ITF viewer application
-/// 
+///
 /// This is the main entry point for running the GUI application.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `config` - Application configuration
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `Result<(), eframe::Error>` - Result of running the application
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust,no_run
 /// use itf_viewer::{run_app, get_default_config};
-/// 
+///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = get_default_config();
 /// run_app(config)?;
@@ -233,12 +230,12 @@ pub fn run_app(config: AppConfig) -> Result<(), eframe::Error> {
             .with_title(&config.window_title),
         ..Default::default()
     };
-    
+
     let app = MainWindow::new();
-    
+
     // Note: Configuration would be applied in the actual app initialization
     // For now, we use defaults in MainWindow::new()
-    
+
     eframe::run_native(
         &config.window_title,
         options,
@@ -266,19 +263,19 @@ mod tests {
             CONDUCTOR metal {THICKNESS=0.5}
         "#;
         assert!(validate_itf_content(valid_content));
-        
+
         // Invalid content - missing TECHNOLOGY
         let invalid_content1 = r#"
             DIELECTRIC oxide {THICKNESS=1.0 ER=4.2}
         "#;
         assert!(!validate_itf_content(invalid_content1));
-        
+
         // Invalid content - no layers
         let invalid_content2 = r#"
             TECHNOLOGY = test_tech
         "#;
         assert!(!validate_itf_content(invalid_content2));
-        
+
         // Empty content
         assert!(!validate_itf_content(""));
     }
@@ -292,7 +289,7 @@ mod tests {
         assert!(config.show_layer_names);
         assert!(config.layer_panel_open);
         assert!(config.default_layer_width > 0.0);
-        
+
         let default_config = get_default_config();
         assert_eq!(config.window_width, default_config.window_width);
         assert_eq!(config.window_height, default_config.window_height);
@@ -303,7 +300,7 @@ mod tests {
         assert!(!VERSION.trim().is_empty());
         assert!(!NAME.trim().is_empty());
         assert!(!DESCRIPTION.trim().is_empty());
-        
+
         assert_eq!(NAME, "itf-viewer");
         assert_eq!(VERSION, "0.1.0");
     }
@@ -312,10 +309,10 @@ mod tests {
     fn test_config_clone_and_debug() {
         let config = AppConfig::default();
         let cloned = config.clone();
-        
+
         assert_eq!(config.window_width, cloned.window_width);
         assert_eq!(config.window_height, cloned.window_height);
-        
+
         // Test Debug formatting (should not panic)
         let debug_str = format!("{config:?}");
         assert!(debug_str.contains("AppConfig"));

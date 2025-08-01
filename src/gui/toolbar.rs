@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use egui::{Context, TopBottomPanel, Slider};
+use egui::{Context, Slider, TopBottomPanel};
 
 pub struct Toolbar {
     pub show_dimensions: bool,
@@ -34,9 +34,9 @@ impl Toolbar {
                             action = ToolbarAction::OpenFile;
                             ui.close_menu();
                         }
-                        
+
                         ui.separator();
-                        
+
                         if ui.button("Exit").clicked() {
                             action = ToolbarAction::Exit;
                             ui.close_menu();
@@ -47,33 +47,39 @@ impl Toolbar {
 
                     // View controls
                     ui.menu_button("View", |ui| {
-                        if ui.checkbox(&mut self.show_dimensions, "Show Dimensions").clicked() {
+                        if ui
+                            .checkbox(&mut self.show_dimensions, "Show Dimensions")
+                            .clicked()
+                        {
                             action = ToolbarAction::ToggleDimensions(self.show_dimensions);
                         }
-                        
-                        if ui.checkbox(&mut self.show_layer_names, "Show Layer Names").clicked() {
+
+                        if ui
+                            .checkbox(&mut self.show_layer_names, "Show Layer Names")
+                            .clicked()
+                        {
                             action = ToolbarAction::ToggleLayerNames(self.show_layer_names);
                         }
-                        
+
                         ui.separator();
-                        
+
                         if ui.button("Auto Fit").clicked() {
                             action = ToolbarAction::AutoFit;
                             ui.close_menu();
                         }
-                        
+
                         if ui.button("Reset View").clicked() {
                             action = ToolbarAction::ResetView;
                             ui.close_menu();
                         }
-                        
+
                         ui.separator();
-                        
+
                         if ui.button("Zoom In").clicked() {
                             action = ToolbarAction::ZoomIn;
                             ui.close_menu();
                         }
-                        
+
                         if ui.button("Zoom Out").clicked() {
                             action = ToolbarAction::ZoomOut;
                             ui.close_menu();
@@ -81,7 +87,6 @@ impl Toolbar {
                     });
 
                     ui.separator();
-
 
                     if ui.button("Zoom+").on_hover_text("Zoom in").clicked() {
                         action = ToolbarAction::ZoomIn;
@@ -107,9 +112,9 @@ impl Toolbar {
                         Slider::new(&mut self.zoom_level, 0.01..=1000.0)
                             .step_by(0.01)
                             .suffix("x")
-                            .logarithmic(true)
+                            .logarithmic(true),
                     );
-                    
+
                     if zoom_response.changed() {
                         action = ToolbarAction::SetZoom(self.zoom_level);
                     }
@@ -121,9 +126,9 @@ impl Toolbar {
                     let width_response = ui.add(
                         Slider::new(&mut self.layer_width, 50.0..=500.0)
                             .step_by(10.0)
-                            .suffix(" px")
+                            .suffix(" px"),
                     );
-                    
+
                     if width_response.changed() {
                         action = ToolbarAction::SetLayerWidth(self.layer_width);
                     }
@@ -200,16 +205,16 @@ mod tests {
     #[test]
     fn test_toolbar_updates() {
         let mut toolbar = Toolbar::new();
-        
+
         toolbar.update_zoom(2.5);
         assert_eq!(toolbar.zoom_level, 2.5);
-        
+
         toolbar.set_show_dimensions(false);
         assert!(!toolbar.show_dimensions);
-        
+
         toolbar.set_show_layer_names(false);
         assert!(!toolbar.show_layer_names);
-        
+
         toolbar.set_layer_width(350.0);
         assert_eq!(toolbar.layer_width, 350.0);
     }
@@ -221,17 +226,17 @@ mod tests {
         let action2 = ToolbarAction::OpenFile;
         let action3 = ToolbarAction::SetZoom(1.5);
         let action4 = ToolbarAction::ToggleDimensions(true);
-        
+
         assert_ne!(action1, action2);
         assert_ne!(action2, action3);
         assert_ne!(action3, action4);
-        
+
         // Test specific values
         match action3 {
             ToolbarAction::SetZoom(zoom) => assert_eq!(zoom, 1.5),
             _ => panic!("Expected SetZoom action"),
         }
-        
+
         match action4 {
             ToolbarAction::ToggleDimensions(show) => assert!(show),
             _ => panic!("Expected ToggleDimensions action"),
@@ -242,7 +247,7 @@ mod tests {
     fn test_default_implementation() {
         let toolbar1 = Toolbar::new();
         let toolbar2 = Toolbar::default();
-        
+
         assert_eq!(toolbar1.show_dimensions, toolbar2.show_dimensions);
         assert_eq!(toolbar1.show_layer_names, toolbar2.show_layer_names);
         assert_eq!(toolbar1.layer_width, toolbar2.layer_width);
@@ -253,9 +258,9 @@ mod tests {
     fn test_clone_and_debug_for_actions() {
         let action = ToolbarAction::SetLayerWidth(250.0);
         let cloned_action = action.clone();
-        
+
         assert_eq!(action, cloned_action);
-        
+
         // Test Debug formatting (should not panic)
         let debug_str = format!("{action:?}");
         assert!(debug_str.contains("SetLayerWidth"));
@@ -277,20 +282,20 @@ mod tests {
             ToolbarAction::ToggleDimensions(false),
             ToolbarAction::ToggleLayerNames(true),
         ];
-        
+
         for action in actions {
             match action {
-                ToolbarAction::None => {},
-                ToolbarAction::OpenFile => {},
-                ToolbarAction::Exit => {},
-                ToolbarAction::AutoFit => {},
-                ToolbarAction::ResetView => {},
-                ToolbarAction::ZoomIn => {},
-                ToolbarAction::ZoomOut => {},
-                ToolbarAction::SetZoom(_) => {},
-                ToolbarAction::SetLayerWidth(_) => {},
-                ToolbarAction::ToggleDimensions(_) => {},
-                ToolbarAction::ToggleLayerNames(_) => {},
+                ToolbarAction::None => {}
+                ToolbarAction::OpenFile => {}
+                ToolbarAction::Exit => {}
+                ToolbarAction::AutoFit => {}
+                ToolbarAction::ResetView => {}
+                ToolbarAction::ZoomIn => {}
+                ToolbarAction::ZoomOut => {}
+                ToolbarAction::SetZoom(_) => {}
+                ToolbarAction::SetLayerWidth(_) => {}
+                ToolbarAction::ToggleDimensions(_) => {}
+                ToolbarAction::ToggleLayerNames(_) => {}
             }
         }
     }

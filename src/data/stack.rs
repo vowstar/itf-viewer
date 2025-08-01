@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use serde::{Deserialize, Serialize};
 use crate::data::{layer::Layer, via::ViaStack};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -63,7 +63,7 @@ impl ProcessStack {
     pub fn add_layer(&mut self, layer: Layer) {
         let layer_name = layer.name().to_string();
         let index = self.layers.len();
-        
+
         self.layer_name_to_index.insert(layer_name, index);
         self.layers.push(layer);
         self.update_layer_positions();
@@ -78,37 +78,36 @@ impl ProcessStack {
         if self.get_layer(layer_name).is_some() {
             return;
         }
-        
+
         let average_thickness = if !self.layers.is_empty() {
             self.layers.iter().map(|l| l.thickness()).sum::<f64>() / self.layers.len() as f64
         } else {
             1.0
         };
-        
+
         let substrate_thickness = average_thickness * 2.0;
-        
-        let auto_layer = Layer::Dielectric(
-            crate::data::layer::DielectricLayer::new_auto_created(
-                layer_name.to_string(),
-                substrate_thickness,
-                3.9
-            )
-        );
-        
+
+        let auto_layer = Layer::Dielectric(crate::data::layer::DielectricLayer::new_auto_created(
+            layer_name.to_string(),
+            substrate_thickness,
+            3.9,
+        ));
+
         // Add substrate layer to the end (bottom) so it appears at bottom in panel and rendering
         self.layers.push(auto_layer);
-        
+
         self.layer_name_to_index.clear();
         for (index, layer) in self.layers.iter().enumerate() {
-            self.layer_name_to_index.insert(layer.name().to_string(), index);
+            self.layer_name_to_index
+                .insert(layer.name().to_string(), index);
         }
-        
+
         self.update_layer_positions();
     }
 
     pub fn ensure_via_layers_exist(&mut self) {
         let mut missing_layers = std::collections::HashSet::new();
-        
+
         for via in &self.via_stack.vias {
             if self.get_layer(&via.from_layer).is_none() {
                 missing_layers.insert(via.from_layer.clone());
@@ -117,9 +116,12 @@ impl ProcessStack {
                 missing_layers.insert(via.to_layer.clone());
             }
         }
-        
+
         for layer_name in missing_layers {
-            eprintln!("Info: Auto-creating missing layer '{}' (200% thickness)", layer_name);
+            eprintln!(
+                "Info: Auto-creating missing layer '{}' (200% thickness)",
+                layer_name
+            );
             self.create_missing_layer(&layer_name);
         }
     }
@@ -128,16 +130,16 @@ impl ProcessStack {
         // Calculate total height first
         let total_height: f64 = self.layers.iter().map(|l| l.thickness()).sum();
         self.total_height = total_height;
-        
+
         // ITF layers are ordered from bottom to top (substrate first, passivation last)
         // Position them sequentially starting from z=0 (bottom)
         let mut current_z = 0.0;
-        
+
         for layer in &mut self.layers {
             layer.set_z_position(current_z);
             current_z += layer.thickness();
         }
-        
+
         self.update_via_positions();
     }
 
@@ -146,14 +148,14 @@ impl ProcessStack {
         for via in &mut self.via_stack.vias {
             let from_layer = layers.iter().find(|l| l.name() == via.from_layer);
             let to_layer = layers.iter().find(|l| l.name() == via.to_layer);
-            
+
             if let (Some(from_layer), Some(to_layer)) = (from_layer, to_layer) {
                 let from_z = from_layer.get_top_z();
                 let to_z = to_layer.get_bottom_z();
-                
+
                 let bottom_z = from_z.min(to_z);
                 let top_z = from_z.max(to_z);
-                
+
                 via.z_position = bottom_z;
                 via.height = top_z - bottom_z;
             }
@@ -182,7 +184,7 @@ impl ProcessStack {
             .filter(|layer| {
                 let layer_bottom = layer.get_bottom_z();
                 let layer_top = layer.get_top_z();
-                
+
                 layer_bottom < z_max && layer_top > z_min
             })
             .collect()
@@ -206,8 +208,8 @@ impl ProcessStack {
         self.layers
             .iter()
             .filter(|layer| {
-                layer.is_conductor() && 
-                (layer.name().starts_with("metal") || layer.name().starts_with("alpa"))
+                layer.is_conductor()
+                    && (layer.name().starts_with("metal") || layer.name().starts_with("alpa"))
             })
             .collect()
     }
@@ -233,19 +235,21 @@ impl ProcessStack {
     }
 
     pub fn get_valid_vias(&self) -> Vec<&crate::data::via::ViaConnection> {
-        self.via_stack.vias.iter()
+        self.via_stack
+            .vias
+            .iter()
             .filter(|via| {
-                self.get_layer(&via.from_layer).is_some() && 
-                self.get_layer(&via.to_layer).is_some()
+                self.get_layer(&via.from_layer).is_some() && self.get_layer(&via.to_layer).is_some()
             })
             .collect()
     }
 
     pub fn get_invalid_vias(&self) -> Vec<&crate::data::via::ViaConnection> {
-        self.via_stack.vias.iter()
+        self.via_stack
+            .vias
+            .iter()
             .filter(|via| {
-                self.get_layer(&via.from_layer).is_none() || 
-                self.get_layer(&via.to_layer).is_none()
+                self.get_layer(&via.from_layer).is_none() || self.get_layer(&via.to_layer).is_none()
             })
             .collect()
     }
@@ -274,7 +278,7 @@ impl ProcessStack {
                 let prev_layer = &self.layers[i - 1];
                 let expected_z = prev_layer.get_top_z();
                 let actual_z = layer.get_bottom_z();
-                
+
                 if (expected_z - actual_z).abs() > 1e-10 {
                     return Err(StackValidationError::LayerPositionMismatch {
                         layer_name: layer.name().to_string(),
@@ -293,7 +297,7 @@ impl ProcessStack {
                     via_name: via.name.clone(),
                 });
             }
-            
+
             if self.get_layer(&via.to_layer).is_none() {
                 return Err(StackValidationError::UnknownLayer {
                     layer_name: via.to_layer.clone(),
@@ -326,7 +330,7 @@ impl ProcessStack {
                 let prev_layer = &self.layers[i - 1];
                 let expected_z = prev_layer.get_top_z();
                 let actual_z = layer.get_bottom_z();
-                
+
                 if (expected_z - actual_z).abs() > 1e-10 {
                     return Err(StackValidationError::LayerPositionMismatch {
                         layer_name: layer.name().to_string(),
@@ -340,11 +344,17 @@ impl ProcessStack {
         // Check via layer references - lenient mode warns but continues
         for via in &self.via_stack.vias {
             if self.get_layer(&via.from_layer).is_none() {
-                warnings.push(format!("VIA '{}' references unknown FROM layer '{}'", via.name, via.from_layer));
+                warnings.push(format!(
+                    "VIA '{}' references unknown FROM layer '{}'",
+                    via.name, via.from_layer
+                ));
             }
-            
+
             if self.get_layer(&via.to_layer).is_none() {
-                warnings.push(format!("VIA '{}' references unknown TO layer '{}'", via.name, via.to_layer));
+                warnings.push(format!(
+                    "VIA '{}' references unknown TO layer '{}'",
+                    via.name, via.to_layer
+                ));
             }
         }
 
@@ -353,7 +363,8 @@ impl ProcessStack {
 
     pub fn get_process_summary(&self) -> ProcessSummary {
         let metal_layers = self.get_metal_layers();
-        let poly_layers: Vec<_> = self.layers
+        let poly_layers: Vec<_> = self
+            .layers
             .iter()
             .filter(|layer| layer.name().contains("poly"))
             .collect();
@@ -389,15 +400,22 @@ pub struct ProcessSummary {
 pub enum StackValidationError {
     #[error("Stack is empty")]
     EmptyStack,
-    
+
     #[error("Layer '{layer_name}' has invalid thickness: {thickness}")]
     InvalidThickness { layer_name: String, thickness: f64 },
-    
+
     #[error("Layer '{layer_name}' position mismatch: expected {expected_z}, got {actual_z}")]
-    LayerPositionMismatch { layer_name: String, expected_z: f64, actual_z: f64 },
-    
+    LayerPositionMismatch {
+        layer_name: String,
+        expected_z: f64,
+        actual_z: f64,
+    },
+
     #[error("Via '{via_name}' references unknown layer '{layer_name}'")]
-    UnknownLayer { layer_name: String, via_name: String },
+    UnknownLayer {
+        layer_name: String,
+        via_name: String,
+    },
 }
 
 #[cfg(test)]
@@ -411,7 +429,7 @@ mod tests {
         let tech = TechnologyInfo::new("test_tech".to_string())
             .with_temperature(25.0)
             .with_reference_direction("VERTICAL".to_string());
-        
+
         assert_eq!(tech.name, "test_tech");
         assert_eq!(tech.global_temperature, Some(25.0));
         assert_eq!(tech.reference_direction, Some("VERTICAL".to_string()));
@@ -421,7 +439,7 @@ mod tests {
     fn test_process_stack_creation() {
         let tech = TechnologyInfo::new("test_process".to_string());
         let stack = ProcessStack::new(tech);
-        
+
         assert_eq!(stack.technology_info.name, "test_process");
         assert_eq!(stack.get_layer_count(), 0);
         assert_eq!(stack.get_total_height(), 0.0);
@@ -431,25 +449,25 @@ mod tests {
     fn test_layer_addition_and_positioning() {
         let tech = TechnologyInfo::new("test_process".to_string());
         let mut stack = ProcessStack::new(tech);
-        
+
         let dielectric1 = Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2));
         let conductor1 = Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5)));
         let dielectric2 = Layer::Dielectric(DielectricLayer::new("oxide2".to_string(), 2.0, 4.2));
-        
+
         stack.add_layer(dielectric1);
         stack.add_layer(conductor1);
         stack.add_layer(dielectric2);
-        
+
         assert_eq!(stack.get_layer_count(), 3);
         assert_relative_eq!(stack.get_total_height(), 3.5, epsilon = 1e-10);
-        
+
         let layer1 = stack.get_layer("oxide1").unwrap();
         let layer2 = stack.get_layer("metal1").unwrap();
         let layer3 = stack.get_layer("oxide2").unwrap();
-        
+
         // With ITF-style ordering (bottom-to-top), positions are sequential:
         // oxide1 (added first) -> bottom: 0.0-1.0
-        // metal1 (added second) -> middle: 1.0-1.5  
+        // metal1 (added second) -> middle: 1.0-1.5
         // oxide2 (added third) -> top: 1.5-3.5
         assert_eq!(layer1.get_bottom_z(), 0.0);
         assert_eq!(layer1.get_top_z(), 1.0);
@@ -463,26 +481,36 @@ mod tests {
     fn test_via_addition_and_positioning() {
         let tech = TechnologyInfo::new("test_process".to_string());
         let mut stack = ProcessStack::new(tech);
-        
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.5))));
-        
+
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.5,
+        ))));
+
         let via = ViaConnection::new(
             "via1".to_string(),
             "metal1".to_string(),
             "metal2".to_string(),
             0.04,
-            5.0
+            5.0,
         );
-        
+
         stack.add_via(via);
-        
+
         assert_eq!(stack.get_via_count(), 1);
-        
+
         let via_ref = &stack.via_stack.vias[0];
         // With ITF ordering: metal1 at bottom (0.0-0.5), metal2 at top (1.5-2.0)
-        // VIA connects from metal1 top (0.5) to metal2 bottom (1.5) 
+        // VIA connects from metal1 top (0.5) to metal2 bottom (1.5)
         // But VIA logic uses min/max of layer boundaries, so:
         // bottom_z = min(metal1.top, metal2.bottom) = min(0.5, 1.5) = 0.5
         // top_z = max(metal1.top, metal2.bottom) = max(0.5, 1.5) = 1.5
@@ -496,16 +524,30 @@ mod tests {
     fn test_layer_filtering() {
         let tech = TechnologyInfo::new("test_process".to_string());
         let mut stack = ProcessStack::new(tech);
-        
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide2".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("poly".to_string(), 0.2))));
-        
+
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide2".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "poly".to_string(),
+            0.2,
+        ))));
+
         assert_eq!(stack.get_conductor_count(), 2);
         assert_eq!(stack.get_dielectric_count(), 2);
         assert_eq!(stack.get_metal_layers().len(), 1);
-        
+
         let layers_in_range = stack.get_layers_in_z_range(0.5, 2.0);
         assert_eq!(layers_in_range.len(), 3);
     }
@@ -514,37 +556,64 @@ mod tests {
     fn test_stack_validation() {
         let tech = TechnologyInfo::new("test_process".to_string());
         let mut stack = ProcessStack::new(tech);
-        
-        assert!(matches!(stack.validate_stack(), Err(StackValidationError::EmptyStack)));
-        
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
+
+        assert!(matches!(
+            stack.validate_stack(),
+            Err(StackValidationError::EmptyStack)
+        ));
+
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
         assert!(stack.validate_stack().is_ok());
-        
+
         let via = ViaConnection::new(
             "via1".to_string(),
             "unknown_layer".to_string(),
             "oxide1".to_string(),
             0.04,
-            5.0
+            5.0,
         );
         stack.add_via(via);
-        
-        assert!(matches!(stack.validate_stack(), Err(StackValidationError::UnknownLayer { .. })));
+
+        assert!(matches!(
+            stack.validate_stack(),
+            Err(StackValidationError::UnknownLayer { .. })
+        ));
     }
 
     #[test]
     fn test_process_summary() {
         let tech = TechnologyInfo::new("test_1p3m".to_string()).with_temperature(85.0);
         let mut stack = ProcessStack::new(tech);
-        
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("poly".to_string(), 0.2))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide1".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal1".to_string(), 0.5))));
-        stack.add_layer(Layer::Dielectric(DielectricLayer::new("oxide2".to_string(), 1.0, 4.2)));
-        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new("metal2".to_string(), 0.5))));
-        
+
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "poly".to_string(),
+            0.2,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide1".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Dielectric(DielectricLayer::new(
+            "oxide2".to_string(),
+            1.0,
+            4.2,
+        )));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.5,
+        ))));
+
         let summary = stack.get_process_summary();
-        
+
         assert_eq!(summary.technology_name, "test_1p3m");
         assert_eq!(summary.total_layers, 5);
         assert_eq!(summary.conductor_layers, 3);
