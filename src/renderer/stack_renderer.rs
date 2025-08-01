@@ -3,7 +3,7 @@
 
 use crate::data::{Layer, ProcessStack};
 use crate::renderer::{colors::ColorScheme, geometry::*, thickness_scaler::ThicknessScaler};
-use egui::{Color32, Pos2, Rect, Shape, Stroke};
+use egui::{Color32, Pos2, Rect, Shape, Stroke, Vec2};
 use std::collections::HashMap;
 
 /// Parameters for creating a single layer geometry
@@ -481,89 +481,78 @@ impl StackRenderer {
         viewport_rect: Rect,
     ) -> Vec<Shape> {
         let mut shapes = Vec::new();
-        let margin = 20.0;
-        let dimension_x = viewport_rect.max.x - margin - 60.0;
 
-        let mut current_z = 0.0f32;
+        // Create simple tick marks along the left edge
+        let ruler_color = egui::Color32::WHITE;
+        let ruler_x = viewport_rect.min.x + 1.0; // Just 1 pixel from left edge
 
-        // First pass: process dielectric layers to establish their positions
-        let mut dielectric_positions = Vec::new();
-        for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
-            if let Layer::Dielectric(_) = layer {
-                let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
-                let bottom = current_z;
-                let top = current_z + exaggerated_height;
-                dielectric_positions.push((layer_index, bottom, top, exaggerated_height));
-                current_z = top;
+        // Get total stack height in world coordinates
+        let total_height = scaler.get_exaggerated_total_height(stack);
+
+        // Convert world coordinates to screen coordinates for ruler boundaries
+        let world_bottom = Pos2::new(0.0, 0.0); // Bottom of stack
+        let world_top = Pos2::new(0.0, -total_height); // Top of stack (negative Y)
+        let screen_bottom = transform.world_to_screen(world_bottom);
+        let screen_top = transform.world_to_screen(world_top);
+
+        // Calculate tick marks
+        let major_tick_interval = self.calculate_major_tick_interval(total_height);
+        let minor_tick_interval = major_tick_interval / 5.0;
+
+        // Draw tick marks
+        let mut current_world_z = 0.0;
+        while current_world_z <= total_height {
+            let world_pos = Pos2::new(0.0, -current_world_z);
+            let screen_pos = transform.world_to_screen(world_pos);
+
+            // Check if this position is visible
+            if screen_pos.y >= screen_top.y && screen_pos.y <= screen_bottom.y {
+                let is_major_tick = (current_world_z / major_tick_interval).round()
+                    * major_tick_interval
+                    == current_world_z;
+
+                if is_major_tick {
+                    // Major tick mark (longer line)
+                    let tick_start = Pos2::new(ruler_x, screen_pos.y);
+                    let tick_end = Pos2::new(ruler_x + 15.0, screen_pos.y);
+                    shapes.push(Shape::line_segment(
+                        [tick_start, tick_end],
+                        egui::Stroke::new(2.0, ruler_color),
+                    ));
+                } else if (current_world_z / minor_tick_interval).round() * minor_tick_interval
+                    == current_world_z
+                {
+                    // Minor tick mark (shorter line)
+                    let tick_start = Pos2::new(ruler_x, screen_pos.y);
+                    let tick_end = Pos2::new(ruler_x + 8.0, screen_pos.y);
+                    shapes.push(Shape::line_segment(
+                        [tick_start, tick_end],
+                        egui::Stroke::new(1.0, ruler_color),
+                    ));
+                }
             }
-        }
 
-        // Second pass: create dimension shapes for all layers
-        let mut dielectric_index = 0;
-
-        for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
-            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
-
-            let (z_bottom, z_top) = match layer {
-                Layer::Dielectric(_) => {
-                    // Use pre-calculated dielectric position
-                    let (_, bottom, top, _) = dielectric_positions[dielectric_index];
-                    dielectric_index += 1;
-                    (bottom, top)
-                }
-                Layer::Conductor(_) => {
-                    // Find the dielectric layer that should contain this conductor
-                    let mut target_dielectric_bottom = 0.0f32;
-
-                    if layer_index > 0 {
-                        if let Some(Layer::Dielectric(_)) = stack.layers.get(layer_index - 1) {
-                            // Find this dielectric's position
-                            for &(d_index, d_bottom, _d_top, _d_height) in &dielectric_positions {
-                                if d_index == (layer_index - 1) {
-                                    target_dielectric_bottom = d_bottom;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    let bottom = target_dielectric_bottom;
-                    let top = bottom + exaggerated_height;
-                    (bottom, top)
-                }
-            };
-
-            let world_bottom = Pos2::new(0.0, -z_bottom);
-            let world_top = Pos2::new(0.0, -z_top);
-            let screen_bottom = transform.world_to_screen(world_bottom);
-            let screen_top = transform.world_to_screen(world_top);
-
-            // Draw dimension line
-            let dim_start = Pos2::new(dimension_x, screen_bottom.y);
-            let dim_end = Pos2::new(dimension_x, screen_top.y);
-
-            shapes.push(Shape::line_segment(
-                [dim_start, dim_end],
-                Stroke::new(1.0, self.color_scheme.get_dimension_text_color()),
-            ));
-
-            // Draw dimension text showing both original and exaggerated thickness
-            let _dim_center = Pos2::new(dimension_x + 30.0, (screen_bottom.y + screen_top.y) * 0.5);
-            let original_thickness = layer.thickness() as f32;
-            let scale_factor = scaler.get_scale_factor(original_thickness);
-            let _thickness_text = if original_thickness >= 1.0 {
-                format!("{original_thickness:.2} ({:.0}%)", scale_factor * 100.0)
-            } else if original_thickness >= 0.01 {
-                format!("{original_thickness:.3} ({:.0}%)", scale_factor * 100.0)
-            } else {
-                format!("{original_thickness:.1e} ({:.0}%)", scale_factor * 100.0)
-            };
-
-            // Text rendering removed for compilation
-            // shapes.push(Shape::text(...));
+            current_world_z += minor_tick_interval;
         }
 
         shapes
+    }
+
+    // Helper function to calculate appropriate tick interval
+    fn calculate_major_tick_interval(&self, total_height: f32) -> f32 {
+        if total_height <= 1.0 {
+            0.1 // 0.1 μm intervals for very small stacks
+        } else if total_height <= 5.0 {
+            0.5 // 0.5 μm intervals
+        } else if total_height <= 10.0 {
+            1.0 // 1 μm intervals
+        } else if total_height <= 50.0 {
+            5.0 // 5 μm intervals
+        } else if total_height <= 100.0 {
+            10.0 // 10 μm intervals
+        } else {
+            20.0 // 20 μm intervals for very large stacks
+        }
     }
 
     fn create_label_shapes(
@@ -674,12 +663,31 @@ impl StackRenderer {
     pub fn auto_fit(&self, stack: &ProcessStack, transform: &mut ViewTransform) {
         let bounds = self.get_stack_bounds(stack);
         if bounds.width() > 0.0 && bounds.height() > 0.0 {
-            // Calculate margin to make stack occupy 90% of viewport
-            // 5% margin on each side = 10% total margin
-            let margin_ratio = 0.05; // 5% margin on each side
+            // Reserve space for the ruler on the left (about 30 pixels)
+            let ruler_space = 30.0;
             let viewport_size = transform.viewport_size;
-            let margin = viewport_size.x.min(viewport_size.y) * margin_ratio;
-            transform.fit_bounds(bounds, margin);
+
+            // Calculate effective viewport size after reserving ruler space
+            let effective_viewport_width = viewport_size.x - ruler_space;
+            let effective_viewport_height = viewport_size.y;
+
+            // Calculate scale to fit both width and height with some margin
+            let margin = 20.0; // Fixed margin in pixels
+            let scale_x = (effective_viewport_width - margin * 2.0) / bounds.width();
+            let scale_y = (effective_viewport_height - margin * 2.0) / bounds.height();
+
+            // Use the smaller scale to ensure everything fits
+            transform.scale = scale_x.min(scale_y).max(0.01);
+
+            // Center the stack in the effective viewport area
+            let bounds_center = bounds.center();
+            let viewport_center_x = ruler_space + effective_viewport_width * 0.5;
+            let viewport_center_y = effective_viewport_height * 0.5;
+
+            transform.offset = Vec2::new(
+                viewport_center_x - bounds_center.x * transform.scale,
+                viewport_center_y - bounds_center.y * transform.scale,
+            );
         }
     }
 }
