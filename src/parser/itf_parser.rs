@@ -90,10 +90,7 @@ impl ItfParser {
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
                 let skipped_line = &remaining[..next_line_end];
                 if !skipped_line.trim().is_empty() && !skipped_line.trim().starts_with("$") {
-                    eprintln!(
-                        "Warning: Skipping unrecognized line: {}",
-                        skipped_line.trim()
-                    );
+                    eprintln!("WARN: Skipping unrecognized line: {}", skipped_line.trim());
                 }
                 remaining = &remaining[next_line_end..];
                 if remaining.starts_with('\n') {
@@ -116,7 +113,7 @@ impl ItfParser {
                     Ok(warnings) => {
                         // Print warnings for missing layer references but continue
                         for warning in warnings {
-                            eprintln!("Warning: {warning}");
+                            eprintln!("WARN: {warning}");
                         }
                     }
                     Err(e) => {
@@ -131,43 +128,20 @@ impl ItfParser {
     }
 
     fn parse_header<'a>(&self, input: &'a str) -> IResult<&'a str, TechnologyInfo> {
-        // Skip comments and whitespace before looking for TECHNOLOGY
         let mut remaining = input;
+        let mut tech_name: Option<String> = None;
+        let mut global_temperature: Option<f64> = None;
+        let mut reference_direction: Option<String> = None;
+        let mut background_er: Option<f64> = None;
+        let mut half_node_scale_factor: Option<f64> = None;
+        let mut use_si_density: Option<bool> = None;
+        let mut drop_factor_lateral_spacing: Option<f64> = None;
+
+        // Parse header fields in any order until we hit a CONDUCTOR, DIELECTRIC, or VIA
         while !remaining.trim().is_empty() {
             let trimmed = remaining.trim_start();
-            if trimmed.starts_with("$") {
-                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
-                remaining = &remaining[next_line_end..];
-                if remaining.starts_with('\n') {
-                    remaining = &remaining[1..];
-                }
-                continue;
-            } else if trimmed.starts_with("TECHNOLOGY") {
-                break;
-            } else if trimmed.chars().all(|c| c.is_whitespace()) {
-                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
-                remaining = &remaining[next_line_end..];
-                if remaining.starts_with('\n') {
-                    remaining = &remaining[1..];
-                }
-                continue;
-            } else {
-                break;
-            }
-        }
 
-        let (input, technology_name) = preceded(
-            (parse_keyword("TECHNOLOGY"), parse_equals),
-            preceded(multispace0, parse_identifier),
-        )
-        .parse(remaining)?;
-
-        let mut tech_info = TechnologyInfo::new(technology_name);
-        let mut remaining = input;
-
-        while !remaining.trim().is_empty() {
-            // Skip comments and empty lines in header
-            let trimmed = remaining.trim_start();
+            // Skip comments and empty lines
             if trimmed.is_empty() || trimmed.starts_with("$") {
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
                 remaining = &remaining[next_line_end..];
@@ -177,7 +151,24 @@ impl ItfParser {
                 continue;
             }
 
-            if let Ok((rest, temp)) = preceded(
+            // Stop parsing header when we encounter layer definitions
+            if trimmed.starts_with("CONDUCTOR")
+                || trimmed.starts_with("DIELECTRIC")
+                || trimmed.starts_with("VIA")
+            {
+                break;
+            }
+
+            // Try to parse various header fields
+            if let Ok((rest, name)) = preceded(
+                (parse_keyword("TECHNOLOGY"), parse_equals),
+                preceded(multispace0, parse_identifier),
+            )
+            .parse(remaining)
+            {
+                tech_name = Some(name);
+                remaining = rest;
+            } else if let Ok((rest, temp)) = preceded(
                 (
                     multispace0,
                     parse_keyword("GLOBAL_TEMPERATURE"),
@@ -187,7 +178,7 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.global_temperature = Some(temp);
+                global_temperature = Some(temp);
                 remaining = rest;
             } else if let Ok((rest, direction)) = preceded(
                 (
@@ -199,7 +190,7 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.reference_direction = Some(direction);
+                reference_direction = Some(direction);
                 remaining = rest;
             } else if let Ok((rest, er)) = preceded(
                 (multispace0, parse_keyword("BACKGROUND_ER"), parse_equals),
@@ -207,7 +198,7 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.background_er = Some(er);
+                background_er = Some(er);
                 remaining = rest;
             } else if let Ok((rest, factor)) = preceded(
                 (
@@ -219,7 +210,7 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.half_node_scale_factor = Some(factor);
+                half_node_scale_factor = Some(factor);
                 remaining = rest;
             } else if let Ok((rest, use_si)) = preceded(
                 (multispace0, parse_keyword("USE_SI_DENSITY"), parse_equals),
@@ -233,7 +224,7 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.use_si_density = Some(use_si);
+                use_si_density = Some(use_si);
                 remaining = rest;
             } else if let Ok((rest, drop_factor)) = preceded(
                 (
@@ -245,12 +236,35 @@ impl ItfParser {
             )
             .parse(remaining)
             {
-                tech_info.drop_factor_lateral_spacing = Some(drop_factor);
+                drop_factor_lateral_spacing = Some(drop_factor);
                 remaining = rest;
             } else {
-                break;
+                // If we can't parse this line as a header field, skip it
+                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
+                let skipped_line = &remaining[..next_line_end];
+                if !skipped_line.trim().is_empty() && !skipped_line.trim().starts_with("$") {
+                    eprintln!(
+                        "WARN: Skipping unrecognized header line: {}",
+                        skipped_line.trim()
+                    );
+                }
+                remaining = &remaining[next_line_end..];
+                if remaining.starts_with('\n') {
+                    remaining = &remaining[1..];
+                }
             }
         }
+
+        // TECHNOLOGY is required, use default if not found
+        let technology_name = tech_name.unwrap_or_else(|| "unknown_technology".to_string());
+
+        let mut tech_info = TechnologyInfo::new(technology_name);
+        tech_info.global_temperature = global_temperature;
+        tech_info.reference_direction = reference_direction;
+        tech_info.background_er = background_er;
+        tech_info.half_node_scale_factor = half_node_scale_factor;
+        tech_info.use_si_density = use_si_density;
+        tech_info.drop_factor_lateral_spacing = drop_factor_lateral_spacing;
 
         Ok((remaining, tech_info))
     }

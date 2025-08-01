@@ -65,7 +65,17 @@ fn run_with_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 
             // Start GUI with the loaded file
             println!("Starting ITF Viewer with loaded file...");
-            let config = get_default_config();
+            let mut config = get_default_config();
+            config.preloaded_stack = Some(stack);
+            config.window_title = format!(
+                "{} - {}",
+                config.window_title,
+                std::path::Path::new(file_path)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            );
+
             run_app(config).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
         }
         Err(e) => {

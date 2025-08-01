@@ -184,6 +184,8 @@ pub struct AppConfig {
     pub default_layer_width: f32,
     /// Whether the layer panel is open by default
     pub layer_panel_open: bool,
+    /// Pre-loaded process stack data
+    pub preloaded_stack: Option<ProcessStack>,
 }
 
 impl Default for AppConfig {
@@ -196,6 +198,7 @@ impl Default for AppConfig {
             show_layer_names: true,
             default_layer_width: 200.0,
             layer_panel_open: true,
+            preloaded_stack: None,
         }
     }
 }
@@ -231,15 +234,18 @@ pub fn run_app(config: AppConfig) -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let app = MainWindow::new();
-
-    // Note: Configuration would be applied in the actual app initialization
-    // For now, we use defaults in MainWindow::new()
-
+    // Create app with preloaded data if available
+    let preloaded_stack = config.preloaded_stack;
     eframe::run_native(
         &config.window_title,
         options,
-        Box::new(|_cc| Ok(Box::new(app))),
+        Box::new(move |_cc| {
+            if let Some(stack) = preloaded_stack {
+                Ok(Box::new(MainWindow::with_stack(stack)) as Box<dyn eframe::App>)
+            } else {
+                Ok(Box::new(MainWindow::new()) as Box<dyn eframe::App>)
+            }
+        }),
     )
 }
 

@@ -33,6 +33,12 @@ impl MainWindow {
         }
     }
 
+    pub fn with_stack(stack: ProcessStack) -> Self {
+        let mut window = Self::new();
+        window.load_stack(stack);
+        window
+    }
+
     pub fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Handle toolbar actions
         let toolbar_action = self.toolbar.show(ctx);
