@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
-use crate::data::{Layer, LayerType, ProcessStack};
+use crate::data::{LayerType, ProcessStack};
 use egui::{CollapsingHeader, Color32, Context, RichText, ScrollArea, SidePanel};
 
 pub struct LayerPanel {
     pub is_open: bool,
     pub selected_layer: Option<String>,
-    pub show_electrical_props: bool,
-    pub show_physical_props: bool,
-    pub show_lookup_tables: bool,
 }
 
 impl LayerPanel {
@@ -17,9 +14,6 @@ impl LayerPanel {
         Self {
             is_open: true,
             selected_layer: None,
-            show_electrical_props: true,
-            show_physical_props: true,
-            show_lookup_tables: false,
         }
     }
 
@@ -36,13 +30,6 @@ impl LayerPanel {
             .width_range(250.0..=500.0)
             .show(ctx, |ui| {
                 ui.heading("Layer Information");
-
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.show_electrical_props, "Electrical");
-                    ui.checkbox(&mut self.show_physical_props, "Physical");
-                    ui.checkbox(&mut self.show_lookup_tables, "Tables");
-                });
-
                 ui.separator();
 
                 if let Some(stack) = stack {
@@ -53,18 +40,6 @@ impl LayerPanel {
                             ui.separator();
 
                             self.show_layer_list(ui, stack, &mut layer_selected);
-
-                            ui.separator();
-
-                            if let Some(ref selected_name) = self.selected_layer {
-                                if let Some(layer) = stack.get_layer(selected_name) {
-                                    self.show_layer_details(ui, layer);
-                                } else if let Some(via) =
-                                    stack.via_stack.iter().find(|v| &v.name == selected_name)
-                                {
-                                    self.show_via_details(ui, via);
-                                }
-                            }
                         });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -174,226 +149,12 @@ impl LayerPanel {
         }
     }
 
-    fn show_layer_details(&self, ui: &mut egui::Ui, layer: &Layer) {
-        CollapsingHeader::new(format!("Layer Details: {}", layer.name()))
-            .default_open(true)
-            .show(ui, |ui| {
-                // Basic properties
-                ui.label(format!("Type: {:?}", layer.layer_type()));
-                ui.label(format!("Thickness: {:.6} um", layer.thickness()));
-                ui.label(format!("Z Position: {:.6} um", layer.z_position()));
-                ui.label(format!("Bottom Z: {:.6} um", layer.get_bottom_z()));
-                ui.label(format!("Top Z: {:.6} um", layer.get_top_z()));
-
-                match layer {
-                    Layer::Dielectric(d) => {
-                        self.show_dielectric_details(ui, d);
-                    }
-                    Layer::Conductor(c) => {
-                        self.show_conductor_details(ui, c);
-                    }
-                }
-            });
-    }
-
-    fn show_dielectric_details(&self, ui: &mut egui::Ui, layer: &crate::data::DielectricLayer) {
-        ui.separator();
-        ui.label(RichText::new("Dielectric Properties").strong());
-
-        ui.label(format!(
-            "Dielectric constant (ER): {:.2}",
-            layer.dielectric_constant
-        ));
-
-        if let Some(ref measured_from) = layer.measured_from {
-            ui.label(format!("Measured from: {measured_from}"));
-        }
-
-        if let Some(sw_t) = layer.sw_t {
-            ui.label(format!("SW_T: {sw_t:.6}"));
-        }
-
-        if let Some(tw_t) = layer.tw_t {
-            ui.label(format!("TW_T: {tw_t:.6}"));
-        }
-    }
-
-    fn show_conductor_details(&self, ui: &mut egui::Ui, layer: &crate::data::ConductorLayer) {
-        if self.show_electrical_props {
-            ui.separator();
-            CollapsingHeader::new("Electrical Properties")
-                .default_open(true)
-                .show(ui, |ui| {
-                    if let Some(crt1) = layer.electrical_props.crt1 {
-                        ui.label(format!("CRT1: {crt1:.3e} /°C"));
-                    }
-
-                    if let Some(crt2) = layer.electrical_props.crt2 {
-                        ui.label(format!("CRT2: {crt2:.3e} /°C²"));
-                    }
-
-                    if let Some(rpsq) = layer.electrical_props.rpsq {
-                        ui.label(format!("Sheet resistance (RPSQ): {rpsq:.6} ohm/sq"));
-                    }
-
-                    if let Some(rpv) = layer.electrical_props.rpv {
-                        ui.label(format!("Resistance per via (RPV): {rpv:.3} ohm"));
-                    }
-                });
-        }
-
-        if self.show_physical_props {
-            ui.separator();
-            CollapsingHeader::new("Physical Properties")
-                .default_open(true)
-                .show(ui, |ui| {
-                    if let Some(wmin) = layer.physical_props.width_min {
-                        ui.label(format!("Min width (WMIN): {wmin:.6} um"));
-                    }
-
-                    if let Some(smin) = layer.physical_props.spacing_min {
-                        ui.label(format!("Min spacing (SMIN): {smin:.6} um"));
-                    }
-
-                    if let Some(side_tangent) = layer.physical_props.side_tangent {
-                        ui.label(format!("Side tangent: {side_tangent:.6}"));
-                        let angle_deg = side_tangent.atan().to_degrees();
-                        ui.label(format!("Side angle: {angle_deg:.2}°"));
-
-                        if side_tangent > 0.0 {
-                            ui.label("Shape: Negative trapezoid (top wider)");
-                        } else if side_tangent < 0.0 {
-                            ui.label("Shape: Positive trapezoid (top narrower)");
-                        } else {
-                            ui.label("Shape: Rectangle");
-                        }
-                    }
-
-                    if let Some(resistive_etch) = layer.resistive_only_etch {
-                        ui.label(format!("Resistive etch: {resistive_etch:.6} um"));
-                    }
-
-                    if let Some(capacitive_etch) = layer.capacitive_only_etch {
-                        ui.label(format!("Capacitive etch: {capacitive_etch:.6} um"));
-                    }
-                });
-        }
-
-        if self.show_lookup_tables {
-            self.show_lookup_tables_info(ui, layer);
-        }
-    }
-
-    fn show_lookup_tables_info(&self, ui: &mut egui::Ui, layer: &crate::data::ConductorLayer) {
-        ui.separator();
-        CollapsingHeader::new("Lookup Tables")
-            .default_open(false)
-            .show(ui, |ui| {
-                if let Some(ref rho_table) = layer.rho_vs_width_spacing {
-                    CollapsingHeader::new("Resistivity vs Width/Spacing")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.label(format!("Width points: {}", rho_table.widths.len()));
-                            ui.label(format!("Spacing points: {}", rho_table.spacings.len()));
-                            ui.label(format!(
-                                "Value matrix: {}x{}",
-                                rho_table.values.len(),
-                                rho_table.values.first().map(|row| row.len()).unwrap_or(0)
-                            ));
-
-                            if !rho_table.widths.is_empty() {
-                                ui.label(format!(
-                                    "Width range: {:.6} - {:.6} um",
-                                    rho_table.widths.first().unwrap_or(&0.0),
-                                    rho_table.widths.last().unwrap_or(&0.0)
-                                ));
-                            }
-
-                            if !rho_table.spacings.is_empty() {
-                                ui.label(format!(
-                                    "Spacing range: {:.6} - {:.6} um",
-                                    rho_table.spacings.first().unwrap_or(&0.0),
-                                    rho_table.spacings.last().unwrap_or(&0.0)
-                                ));
-                            }
-                        });
-                }
-
-                if let Some(ref etch_table) = layer.etch_vs_width_spacing {
-                    CollapsingHeader::new("Etch vs Width/Spacing")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.label(format!("Width points: {}", etch_table.widths.len()));
-                            ui.label(format!("Spacing points: {}", etch_table.spacings.len()));
-                            ui.label(format!(
-                                "Value matrix: {}x{}",
-                                etch_table.values.len(),
-                                etch_table.values.first().map(|row| row.len()).unwrap_or(0)
-                            ));
-                        });
-                }
-
-                if let Some(ref thickness_table) = layer.thickness_vs_width_spacing {
-                    CollapsingHeader::new("Thickness vs Width/Spacing")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.label(format!("Width points: {}", thickness_table.widths.len()));
-                            ui.label(format!(
-                                "Spacing points: {}",
-                                thickness_table.spacings.len()
-                            ));
-                            ui.label(format!(
-                                "Value matrix: {}x{}",
-                                thickness_table.values.len(),
-                                thickness_table
-                                    .values
-                                    .first()
-                                    .map(|row| row.len())
-                                    .unwrap_or(0)
-                            ));
-                        });
-                }
-
-                if layer.rho_vs_width_spacing.is_none()
-                    && layer.etch_vs_width_spacing.is_none()
-                    && layer.thickness_vs_width_spacing.is_none()
-                {
-                    ui.label("No lookup tables available");
-                }
-            });
-    }
-
     pub fn set_selected_layer(&mut self, layer_name: Option<String>) {
         self.selected_layer = layer_name;
     }
 
     pub fn get_selected_layer(&self) -> Option<&String> {
         self.selected_layer.as_ref()
-    }
-
-    fn show_via_details(&self, ui: &mut egui::Ui, via: &crate::data::ViaConnection) {
-        CollapsingHeader::new(format!("Via Details: {}", via.name))
-            .default_open(true)
-            .show(ui, |ui| {
-                ui.label("Type: Via Connection");
-                ui.label(format!("From layer: {}", via.from_layer));
-                ui.label(format!("To layer: {}", via.to_layer));
-                ui.label(format!("Area: {:.6} um^2", via.area));
-                ui.label(format!("Width: {:.6} um", via.get_via_width()));
-                ui.label(format!("Height: {:.6} um", via.height));
-                ui.label(format!("Z position: {:.6} um", via.z_position));
-                ui.label(format!(
-                    "Resistance per via: {:.3} ohm",
-                    via.resistance_per_via
-                ));
-                ui.label(format!("Via type: {:?}", via.get_via_type()));
-
-                if via.is_contact_via() {
-                    ui.label("Contact via (connects to substrate/diffusion)");
-                } else if via.is_metal_via() {
-                    ui.label("Metal via (connects metal layers)");
-                }
-            });
     }
 
     pub fn toggle_visibility(&mut self) {
@@ -416,9 +177,6 @@ mod tests {
         let panel = LayerPanel::new();
         assert!(panel.is_open);
         assert!(panel.selected_layer.is_none());
-        assert!(panel.show_electrical_props);
-        assert!(panel.show_physical_props);
-        assert!(!panel.show_lookup_tables);
     }
 
     #[test]
@@ -446,20 +204,10 @@ mod tests {
 
     #[test]
     fn test_property_display_flags() {
-        let mut panel = LayerPanel::new();
+        let panel = LayerPanel::new();
 
-        // Test initial state
-        assert!(panel.show_electrical_props);
-        assert!(panel.show_physical_props);
-        assert!(!panel.show_lookup_tables);
-
-        // Test toggles
-        panel.show_electrical_props = false;
-        panel.show_physical_props = false;
-        panel.show_lookup_tables = true;
-
-        assert!(!panel.show_electrical_props);
-        assert!(!panel.show_physical_props);
-        assert!(panel.show_lookup_tables);
+        // Test initial state - no property flags anymore
+        assert!(panel.is_open);
+        assert!(panel.selected_layer.is_none());
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2025 Huang Rui <vowstar@gmail.com>
 
 use crate::data::ProcessStack;
-use crate::gui::{FileMenu, LayerPanel, StackViewer, Toolbar, ToolbarAction};
+use crate::gui::{FileMenu, LayerDetailsPanel, LayerPanel, StackViewer, Toolbar, ToolbarAction};
 use crate::parser::parse_itf_file;
 use egui::Context;
 use rfd::FileDialog;
@@ -11,6 +11,7 @@ use std::path::PathBuf;
 pub struct MainWindow {
     file_menu: FileMenu,
     layer_panel: LayerPanel,
+    layer_details_panel: LayerDetailsPanel,
     stack_viewer: StackViewer,
     toolbar: Toolbar,
     current_stack: Option<ProcessStack>,
@@ -23,6 +24,7 @@ impl MainWindow {
         Self {
             file_menu: FileMenu::new(),
             layer_panel: LayerPanel::new(),
+            layer_details_panel: LayerDetailsPanel::new(),
             stack_viewer: StackViewer::new(),
             toolbar: Toolbar::new(),
             current_stack: None,
@@ -52,12 +54,22 @@ impl MainWindow {
         if let Some(selected_layer) = self.layer_panel.show(ctx, self.current_stack.as_ref()) {
             self.stack_viewer
                 .set_selected_layer(Some(selected_layer.clone()));
-            self.layer_panel.set_selected_layer(Some(selected_layer));
+            self.layer_panel
+                .set_selected_layer(Some(selected_layer.clone()));
+            self.layer_details_panel
+                .set_selected_layer(Some(selected_layer));
         }
+
+        // Show layer details panel on the right
+        self.layer_details_panel
+            .show(ctx, self.current_stack.as_ref());
 
         // Show main stack viewer and handle layer selection from viewer
         if let Some(selected_layer) = self.stack_viewer.show(ctx, self.current_stack.as_ref()) {
-            self.layer_panel.set_selected_layer(Some(selected_layer));
+            self.layer_panel
+                .set_selected_layer(Some(selected_layer.clone()));
+            self.layer_details_panel
+                .set_selected_layer(Some(selected_layer));
         }
 
         // Show about dialog if requested
@@ -138,6 +150,7 @@ impl MainWindow {
 
         // Clear any previous layer selection
         self.layer_panel.set_selected_layer(None);
+        self.layer_details_panel.set_selected_layer(None);
         self.stack_viewer.set_selected_layer(None);
 
         // Close file menu

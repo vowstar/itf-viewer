@@ -471,11 +471,15 @@ VIA VIA6 { FROM=M6	TO=M7
 "#;
 
     let result = parse_itf_file(test_content);
-    assert!(result.is_ok(), "Failed to parse complex via definitions: {:?}", result.err());
-    
+    assert!(
+        result.is_ok(),
+        "Failed to parse complex via definitions: {:?}",
+        result.err()
+    );
+
     let stack = result.unwrap();
     assert_eq!(stack.get_via_count(), 2, "Should parse both VIA6 and VIA7");
-    
+
     // Check VIA7 (simple format with extra properties)
     let via7 = stack.via_stack.vias.iter().find(|v| v.name == "VIA7");
     assert!(via7.is_some(), "VIA7 should be parsed successfully");
@@ -484,7 +488,7 @@ VIA VIA6 { FROM=M6	TO=M7
     assert_eq!(via7.to_layer, "M8");
     assert_eq!(via7.area, 0.104976);
     assert_eq!(via7.resistance_per_via, 0.27);
-    
+
     // Check VIA6 (complex format - should parse FROM/TO but skip advanced properties)
     let via6 = stack.via_stack.vias.iter().find(|v| v.name == "VIA6");
     assert!(via6.is_some(), "VIA6 should be parsed successfully");
