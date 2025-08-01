@@ -323,8 +323,8 @@ impl StackRenderer {
 
                     // Check if this VIA will be selected
                     let via_name = format!("{}_{}", via.name, i);
-                    let is_selected = self.selected_layer.as_deref() == Some(&via_name) ||
-                                    self.selected_layer.as_deref() == Some(&via.name);
+                    let is_selected = self.selected_layer.as_deref() == Some(&via_name)
+                        || self.selected_layer.as_deref() == Some(&via.name);
 
                     // Use different colors for selected vs normal VIAs
                     let via_color = if is_selected {
@@ -332,8 +332,14 @@ impl StackRenderer {
                     } else {
                         Color32::from_rgb(192, 192, 192) // Silver-gray color for normal VIA
                     };
-                    let stroke = Stroke::new(if is_selected { 3.0 } else { 2.0 }, 
-                                           if is_selected { Color32::YELLOW } else { Color32::DARK_GRAY });
+                    let stroke = Stroke::new(
+                        if is_selected { 3.0 } else { 2.0 },
+                        if is_selected {
+                            Color32::YELLOW
+                        } else {
+                            Color32::DARK_GRAY
+                        },
+                    );
 
                     let rectangle = RectangleShape::new(
                         via_screen_center,
@@ -352,8 +358,8 @@ impl StackRenderer {
                     );
 
                     // Check if this VIA is selected (check both full name and base name)
-                    let is_selected = self.selected_layer.as_deref() == Some(&via_name) ||
-                                    self.selected_layer.as_deref() == Some(&via.name);
+                    let is_selected = self.selected_layer.as_deref() == Some(&via_name)
+                        || self.selected_layer.as_deref() == Some(&via.name);
                     geometry.set_selected(is_selected);
 
                     geometries.push(geometry);
@@ -614,10 +620,7 @@ impl StackRenderer {
 
     /// Create outlined text shapes (black outline + white text) for better visibility
     fn create_outlined_text_shapes(&self, pos: Pos2, text: &str, font_size: f32) -> Vec<Shape> {
-        use egui::epaint::{FontId, TextShape};
         let mut shapes = Vec::new();
-
-        let font_id = FontId::proportional(font_size);
         let stroke_width = 1.0;
 
         // Create black outline text shapes for better readability
@@ -632,26 +635,29 @@ impl StackRenderer {
             (stroke_width, stroke_width),
         ];
 
-        // Add black outline text shapes
+        // For now, create simple rectangles as text placeholders until we can implement proper text
+        let text_width = font_size * 0.6 * text.len() as f32;
+        let text_height = font_size * 1.2;
+
+        // Add black outline rectangles
         for (dx, dy) in offsets {
             let offset_pos = Pos2::new(pos.x + dx, pos.y + dy);
-            let text_shape = TextShape::simple(
-                offset_pos,
-                font_id.clone(),
-                text.to_string(),
-                Color32::BLACK,
-            );
-            shapes.push(Shape::Text(text_shape));
+            let rect = Rect::from_center_size(offset_pos, Vec2::new(text_width, text_height));
+            shapes.push(Shape::rect_filled(rect, 2.0, Color32::BLACK));
         }
 
-        // Add main white text on top
-        let text_shape = TextShape::simple(
-            pos,
-            font_id,
-            text.to_string(),
-            Color32::WHITE,
-        );
-        shapes.push(Shape::Text(text_shape));
+        // Add main white text background
+        let main_rect = Rect::from_center_size(pos, Vec2::new(text_width, text_height));
+        shapes.push(Shape::rect_filled(main_rect, 2.0, Color32::WHITE));
+
+        // Add a darker inner rectangle to show text area
+        let inner_rect =
+            Rect::from_center_size(pos, Vec2::new(text_width * 0.8, text_height * 0.6));
+        shapes.push(Shape::rect_filled(
+            inner_rect,
+            1.0,
+            Color32::from_rgb(100, 100, 100),
+        ));
 
         shapes
     }
