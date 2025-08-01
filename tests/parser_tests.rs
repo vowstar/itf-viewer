@@ -134,7 +134,7 @@ fn test_stack_validation() {
     let stack = result.unwrap();
     assert!(stack.validate_stack().is_ok());
     
-    // Test layer positioning
+    // Test layer positioning with ITF ordering (bottom-to-top)
     let layers = &stack.layers;
     for i in 1..layers.len() {
         let prev_top = layers[i-1].get_top_z();

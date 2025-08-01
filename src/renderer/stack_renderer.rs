@@ -96,38 +96,16 @@ impl StackRenderer {
             50.0,
         );
         
-        // Create layer ordering: DIELECTRIC first, then CONDUCTOR
-        // We'll calculate z positions based on the stacking order, not the original order
+        // ITF layers are defined from top to bottom, but we need to render from bottom to top
+        // So we reverse the layer order for rendering to match the physical stack
         let mut current_z = 0.0f32;
         
-        // Step 1: Render all DIELECTRIC layers (bottom to top in ITF order)
-        let dielectric_layers = stack.get_dielectric_layers();
-        for dielectric in dielectric_layers {
-            let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, dielectric)).unwrap();
-            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(dielectric);
+        // Render layers in reverse ITF order (bottom to top physically)
+        for (layer_index, layer) in stack.layers.iter().enumerate().rev() {
+            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(layer);
             
             let params = LayerGeometryParams {
-                layer: dielectric,
-                layer_index,
-                z_bottom: current_z,
-                z_top: current_z + exaggerated_height,
-                exaggerated_height,
-                layer_width,
-            };
-            let geometry = self.create_single_layer_geometry(&params, transform);
-            
-            geometries.push(geometry);
-            current_z += exaggerated_height;
-        }
-        
-        // Step 2: Render all CONDUCTOR layers (bottom to top in ITF order) 
-        let conductor_layers = stack.get_conductor_layers();
-        for conductor in conductor_layers {
-            let layer_index = stack.layers.iter().position(|l| std::ptr::eq(l, conductor)).unwrap();
-            let exaggerated_height = scaler.get_exaggerated_thickness_for_layer(conductor);
-            
-            let params = LayerGeometryParams {
-                layer: conductor,
+                layer,
                 layer_index,
                 z_bottom: current_z,
                 z_top: current_z + exaggerated_height,
@@ -617,11 +595,13 @@ mod tests {
         // Should have 4 geometries
         assert_eq!(geometries.len(), 4);
         
-        // Check stacking order: all dielectrics first, then all conductors
-        assert_eq!(geometries[0].layer_name, "dielectric1"); // First dielectric
-        assert_eq!(geometries[1].layer_name, "dielectric2"); // Second dielectric
-        assert_eq!(geometries[2].layer_name, "conductor1"); // First conductor
-        assert_eq!(geometries[3].layer_name, "conductor2"); // Second conductor
+        // Check stacking order: layers should be rendered in reverse ITF order (bottom to top physically)
+        // ITF order: conductor1, dielectric1, conductor2, dielectric2 (top to bottom in file)
+        // Render order: dielectric2, conductor2, dielectric1, conductor1 (bottom to top physically)
+        assert_eq!(geometries[0].layer_name, "dielectric2"); // Last in ITF = bottom of stack
+        assert_eq!(geometries[1].layer_name, "conductor2"); // Second to last in ITF
+        assert_eq!(geometries[2].layer_name, "dielectric1"); // Second in ITF
+        assert_eq!(geometries[3].layer_name, "conductor1"); // First in ITF = top of stack
         
         // Check z positions are monotonically increasing (bottom to top)
         for i in 1..geometries.len() {
@@ -709,16 +689,19 @@ mod tests {
         scaler.analyze_stack(&stack);
         let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
         
-        // Should have 3 geometries in stacking order (dielectrics first, then conductors)
+        // Should have 3 geometries in reverse ITF order (bottom to top physically)
+        // ITF order: thin, thick, medium (top to bottom in file)
+        // Render order: medium, thick, thin (bottom to top physically)
         assert_eq!(geometries.len(), 3);
-        assert_eq!(geometries[0].layer_name, "thin"); // First dielectric
-        assert_eq!(geometries[1].layer_name, "medium"); // Second dielectric  
-        assert_eq!(geometries[2].layer_name, "thick"); // Conductor
+        assert_eq!(geometries[0].layer_name, "medium"); // Last in ITF = bottom of stack
+        assert_eq!(geometries[1].layer_name, "thick"); // Second in ITF  
+        assert_eq!(geometries[2].layer_name, "thin"); // First in ITF = top of stack
         
         // Check that thickness exaggeration is applied
-        let thin_height = geometries[0].z_top - geometries[0].z_bottom;
-        let thick_height = geometries[2].z_top - geometries[2].z_bottom;
-        let medium_height = geometries[1].z_top - geometries[1].z_bottom;
+        // geometry[0] = medium, geometry[1] = thick, geometry[2] = thin
+        let medium_height = geometries[0].z_top - geometries[0].z_bottom;
+        let thick_height = geometries[1].z_top - geometries[1].z_bottom;
+        let thin_height = geometries[2].z_top - geometries[2].z_bottom;
         
         // Thick layer should have largest exaggerated height
         assert!(thick_height > medium_height);

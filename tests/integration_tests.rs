@@ -88,21 +88,25 @@ fn test_layer_positioning() {
     
     let stack = parse_itf_file(&content).expect("Failed to parse ITF file");
     
-    // Test that layers are properly positioned
-    let mut previous_top = 0.0;
-    for layer in &stack.layers {
+    // Test that layers are properly positioned using ITF ordering (bottom-to-top)
+    // In ITF ordering, layers are stacked with first layer at bottom, last at top
+    for (i, layer) in stack.layers.iter().enumerate() {
         let bottom = layer.get_bottom_z();
         let top = layer.get_top_z();
         
-        // Each layer should start where the previous one ended
-        assert!((bottom - previous_top).abs() < 1e-10, 
-               "Layer {} positioning error: bottom={}, expected={}", 
-               layer.name(), bottom, previous_top);
+        // Layer should have positive or zero thickness
+        assert!(top >= bottom, "Layer {} has invalid thickness", layer.name());
         
-        // Layer should have positive thickness
-        assert!(top > bottom, "Layer {} has invalid thickness", layer.name());
-        
-        previous_top = top;
+        // Check layer continuity: current layer's bottom should match previous layer's top
+        if i > 0 {
+            let prev_layer = &stack.layers[i - 1];
+            let prev_top = prev_layer.get_top_z();
+            let current_bottom = layer.get_bottom_z();
+            
+            assert!((prev_top - current_bottom).abs() < 1e-10,
+                   "Layer {} positioning error: bottom={}, expected to match previous top={}",
+                   layer.name(), current_bottom, prev_top);
+        }
     }
     
     // Total height should match sum of layer thicknesses

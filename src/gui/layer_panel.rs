@@ -97,8 +97,8 @@ impl LayerPanel {
         CollapsingHeader::new("Layer Stack")
             .default_open(true)
             .show(ui, |ui| {
-                // Show layers from top to bottom (reverse order)
-                for layer in stack.layers.iter().rev() {
+                // Show layers from top to bottom (ITF order matches visual expectation)
+                for layer in stack.layers.iter() {
                     let is_selected = self.selected_layer.as_deref() == Some(layer.name());
                     
                     let layer_color = match layer.layer_type() {

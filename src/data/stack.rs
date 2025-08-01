@@ -95,7 +95,8 @@ impl ProcessStack {
             )
         );
         
-        self.layers.insert(0, auto_layer);
+        // Add substrate layer to the end (bottom) so it appears at bottom in panel and rendering
+        self.layers.push(auto_layer);
         
         self.layer_name_to_index.clear();
         for (index, layer) in self.layers.iter().enumerate() {
@@ -124,6 +125,12 @@ impl ProcessStack {
     }
 
     fn update_layer_positions(&mut self) {
+        // Calculate total height first
+        let total_height: f64 = self.layers.iter().map(|l| l.thickness()).sum();
+        self.total_height = total_height;
+        
+        // ITF layers are ordered from bottom to top (substrate first, passivation last)
+        // Position them sequentially starting from z=0 (bottom)
         let mut current_z = 0.0;
         
         for layer in &mut self.layers {
@@ -131,7 +138,6 @@ impl ProcessStack {
             current_z += layer.thickness();
         }
         
-        self.total_height = current_z;
         self.update_via_positions();
     }
 
@@ -264,6 +270,7 @@ impl ProcessStack {
             }
 
             if i > 0 {
+                // In ITF ordering (bottom-to-top), current layer should be above previous layer
                 let prev_layer = &self.layers[i - 1];
                 let expected_z = prev_layer.get_top_z();
                 let actual_z = layer.get_bottom_z();
@@ -315,6 +322,7 @@ impl ProcessStack {
             }
 
             if i > 0 {
+                // In ITF ordering (bottom-to-top), current layer should be above previous layer
                 let prev_layer = &self.layers[i - 1];
                 let expected_z = prev_layer.get_top_z();
                 let actual_z = layer.get_bottom_z();
@@ -439,6 +447,10 @@ mod tests {
         let layer2 = stack.get_layer("metal1").unwrap();
         let layer3 = stack.get_layer("oxide2").unwrap();
         
+        // With ITF-style ordering (bottom-to-top), positions are sequential:
+        // oxide1 (added first) -> bottom: 0.0-1.0
+        // metal1 (added second) -> middle: 1.0-1.5  
+        // oxide2 (added third) -> top: 1.5-3.5
         assert_eq!(layer1.get_bottom_z(), 0.0);
         assert_eq!(layer1.get_top_z(), 1.0);
         assert_eq!(layer2.get_bottom_z(), 1.0);
@@ -469,6 +481,11 @@ mod tests {
         assert_eq!(stack.get_via_count(), 1);
         
         let via_ref = &stack.via_stack.vias[0];
+        // With ITF ordering: metal1 at bottom (0.0-0.5), metal2 at top (1.5-2.0)
+        // VIA connects from metal1 top (0.5) to metal2 bottom (1.5) 
+        // But VIA logic uses min/max of layer boundaries, so:
+        // bottom_z = min(metal1.top, metal2.bottom) = min(0.5, 1.5) = 0.5
+        // top_z = max(metal1.top, metal2.bottom) = max(0.5, 1.5) = 1.5
         assert_eq!(via_ref.z_position, 0.5);
         assert_eq!(via_ref.height, 1.0);
         assert_eq!(via_ref.get_top_z(), 1.5);
