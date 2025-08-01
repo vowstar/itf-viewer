@@ -45,6 +45,7 @@ impl ItfParser {
                 continue;
             }
 
+
             if let Ok((rest, layer)) = self.parse_dielectric_layer(remaining) {
                 stack.add_layer(Layer::Dielectric(layer));
                 remaining = rest;
@@ -521,6 +522,7 @@ impl ItfParser {
             preceded(multispace0, parse_left_brace),
         ))(input)?;
 
+
         let mut from_layer = String::new();
         let mut to_layer = String::new();
         let mut area = 0.0;
@@ -561,10 +563,20 @@ impl ItfParser {
                 rpv = rpv_val;
                 remaining = rest;
             } else {
+                // Check if there's a closing brace on this line - if so, we should stop here
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
-                remaining = &remaining[next_line_end..];
-                if remaining.starts_with('\n') {
-                    remaining = &remaining[1..];
+                let current_line = &remaining[..next_line_end];
+                
+                if let Some(brace_pos) = current_line.find('}') {
+                    // Found closing brace on this line - only skip content before the brace
+                    remaining = &remaining[brace_pos..];
+                    break; // Exit the parsing loop, let the main parser handle the closing brace
+                } else {
+                    // No closing brace, skip the entire line
+                    remaining = &remaining[next_line_end..];
+                    if remaining.starts_with('\n') {
+                        remaining = &remaining[1..];
+                    }
                 }
             }
         }

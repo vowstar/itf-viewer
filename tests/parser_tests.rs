@@ -442,3 +442,56 @@ fn test_parse_real_world_28nm() {
     assert_eq!(summary.technology_name, "test_real_world_28nm");
     assert!(summary.total_height > 10.0); // Should be thick stack
 }
+
+#[test]
+fn test_complex_via_parsing() {
+    // Test parsing of complex VIA definitions with advanced properties
+    let test_content = r#"
+TECHNOLOGY = test_complex_via
+GLOBAL_TEMPERATURE = 25.0
+
+CONDUCTOR M6 { THICKNESS = 0.400 RPSQ = 0.065 }
+DIELECTRIC IMD6 { THICKNESS = 0.500 ER = 2.8 }
+CONDUCTOR M7 { THICKNESS = 0.450 RPSQ = 0.060 }
+CONDUCTOR M8 { THICKNESS = 0.500 RPSQ = 0.055 }
+
+VIA VIA7 { FROM=M7	TO=M8 AREA=0.104976 RPV=0.27  CRT1=2.373e-03  CRT2=1.646e-06 }
+
+VIA VIA6 { FROM=M6	TO=M7 
+   RPV_VS_AREA { (0.002025, 8) (0.005265, 4.5) }
+   CRT_VS_AREA { (0.002025, 3.649e-04, -5.208e-07) (0.005265, 1.175e-03, 8.024e-07) }
+   ETCH_VS_WIDTH_AND_LENGTH CAPACITIVE_ONLY {
+        LENGTHS { 0.045000 0.117000 }
+        WIDTHS { 0.045000 }
+        VALUES {
+	       (-0.01285, -0.01285 ) (-0.011, -0.011 ) 
+        }
+   }
+}
+"#;
+
+    let result = parse_itf_file(test_content);
+    assert!(result.is_ok(), "Failed to parse complex via definitions: {:?}", result.err());
+    
+    let stack = result.unwrap();
+    assert_eq!(stack.get_via_count(), 2, "Should parse both VIA6 and VIA7");
+    
+    // Check VIA7 (simple format with extra properties)
+    let via7 = stack.via_stack.vias.iter().find(|v| v.name == "VIA7");
+    assert!(via7.is_some(), "VIA7 should be parsed successfully");
+    let via7 = via7.unwrap();
+    assert_eq!(via7.from_layer, "M7");
+    assert_eq!(via7.to_layer, "M8");
+    assert_eq!(via7.area, 0.104976);
+    assert_eq!(via7.resistance_per_via, 0.27);
+    
+    // Check VIA6 (complex format - should parse FROM/TO but skip advanced properties)
+    let via6 = stack.via_stack.vias.iter().find(|v| v.name == "VIA6");
+    assert!(via6.is_some(), "VIA6 should be parsed successfully");
+    let via6 = via6.unwrap();
+    assert_eq!(via6.from_layer, "M6");
+    assert_eq!(via6.to_layer, "M7");
+    // Complex VIA6 doesn't have simple AREA/RPV values, so these will be defaults
+    assert_eq!(via6.area, 0.0);
+    assert_eq!(via6.resistance_per_via, 0.0);
+}
