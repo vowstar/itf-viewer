@@ -121,12 +121,17 @@ impl StackViewer {
         }
 
         // Set cursor icon once at the end based on final state - prevents race conditions
-        let cursor_icon = if response.dragged() || self.is_panning {
+        let cursor_icon = if self.is_panning || response.dragged() {
             CursorIcon::Grabbing
         } else if response.hovered() {
             CursorIcon::Grab
         } else {
-            CursorIcon::Default
+            // Only set to default if we're not in any interactive state
+            if !self.is_panning {
+                CursorIcon::Default
+            } else {
+                CursorIcon::Grab // Fallback to grab if we're still in an interactive state
+            }
         };
 
         ui.output_mut(|output| output.cursor_icon = cursor_icon);

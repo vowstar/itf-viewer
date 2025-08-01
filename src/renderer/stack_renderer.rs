@@ -618,46 +618,35 @@ impl StackRenderer {
         shapes
     }
 
-    /// Create outlined text shapes (black outline + white text) for better visibility
+    /// Create simple colored rectangles as text placeholders for layer identification
     fn create_outlined_text_shapes(&self, pos: Pos2, text: &str, font_size: f32) -> Vec<Shape> {
         let mut shapes = Vec::new();
-        let stroke_width = 1.0;
 
-        // Create black outline text shapes for better readability
-        let offsets = [
-            (-stroke_width, -stroke_width),
-            (-stroke_width, 0.0),
-            (-stroke_width, stroke_width),
-            (0.0, -stroke_width),
-            (0.0, stroke_width),
-            (stroke_width, -stroke_width),
-            (stroke_width, 0.0),
-            (stroke_width, stroke_width),
-        ];
+        // Create a more visible rectangular indicator for the layer name
+        let text_width = font_size * 0.8 * text.len() as f32;
+        let text_height = font_size * 1.5;
 
-        // For now, create simple rectangles as text placeholders until we can implement proper text
-        let text_width = font_size * 0.6 * text.len() as f32;
-        let text_height = font_size * 1.2;
+        // Add black outline for contrast
+        let outline_rect =
+            Rect::from_center_size(pos, Vec2::new(text_width + 4.0, text_height + 4.0));
+        shapes.push(Shape::rect_filled(outline_rect, 3.0, Color32::BLACK));
 
-        // Add black outline rectangles
-        for (dx, dy) in offsets {
-            let offset_pos = Pos2::new(pos.x + dx, pos.y + dy);
-            let rect = Rect::from_center_size(offset_pos, Vec2::new(text_width, text_height));
-            shapes.push(Shape::rect_filled(rect, 2.0, Color32::BLACK));
-        }
+        // Add bright colored background to make it very visible
+        let bg_color = match text.len() % 6 {
+            0 => Color32::from_rgb(255, 255, 0),   // Yellow
+            1 => Color32::from_rgb(0, 255, 255),   // Cyan
+            2 => Color32::from_rgb(255, 0, 255),   // Magenta
+            3 => Color32::from_rgb(255, 165, 0),   // Orange
+            4 => Color32::from_rgb(144, 238, 144), // Light Green
+            _ => Color32::from_rgb(255, 192, 203), // Pink
+        };
 
-        // Add main white text background
         let main_rect = Rect::from_center_size(pos, Vec2::new(text_width, text_height));
-        shapes.push(Shape::rect_filled(main_rect, 2.0, Color32::WHITE));
+        shapes.push(Shape::rect_filled(main_rect, 2.0, bg_color));
 
-        // Add a darker inner rectangle to show text area
-        let inner_rect =
-            Rect::from_center_size(pos, Vec2::new(text_width * 0.8, text_height * 0.6));
-        shapes.push(Shape::rect_filled(
-            inner_rect,
-            1.0,
-            Color32::from_rgb(100, 100, 100),
-        ));
+        // Add a small indicator in the center
+        let center_dot = Rect::from_center_size(pos, Vec2::new(4.0, 4.0));
+        shapes.push(Shape::rect_filled(center_dot, 1.0, Color32::BLACK));
 
         shapes
     }
@@ -714,7 +703,23 @@ impl StackRenderer {
         // Test VIAs first (highest z-index, rendered on top of everything)
         for geometry in via_geometries.iter().rev() {
             if geometry.contains_point(point) {
-                return Some(geometry.layer_name.clone());
+                // For VIA geometries, extract the base name (remove the "_N" suffix)
+                // VIA geometry names are in format "via_name_0", "via_name_1", etc.
+                let base_name = if let Some(underscore_pos) = geometry.layer_name.rfind('_') {
+                    // Check if the part after the last underscore is a number
+                    let suffix = &geometry.layer_name[underscore_pos + 1..];
+                    if suffix.chars().all(|c| c.is_ascii_digit()) {
+                        // This is a VIA with index suffix, return the base name
+                        geometry.layer_name[..underscore_pos].to_string()
+                    } else {
+                        // Not a VIA index, return full name
+                        geometry.layer_name.clone()
+                    }
+                } else {
+                    // No underscore, return full name
+                    geometry.layer_name.clone()
+                };
+                return Some(base_name);
             }
         }
 
