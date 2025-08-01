@@ -225,7 +225,10 @@ mod tests {
         for via_geom in &via_geometries {
             // Extract base name by removing the last _N suffix
             let base_name = if let Some(last_underscore) = via_geom.layer_name.rfind('_') {
-                if via_geom.layer_name[last_underscore + 1..].chars().all(|c| c.is_numeric()) {
+                if via_geom.layer_name[last_underscore + 1..]
+                    .chars()
+                    .all(|c| c.is_numeric())
+                {
                     &via_geom.layer_name[..last_underscore]
                 } else {
                     &via_geom.layer_name
@@ -262,7 +265,7 @@ mod tests {
                     let metal2_bounds = layer_boundaries.get("metal2").unwrap();
                     let metal3_bounds = layer_boundaries.get("metal3").unwrap();
 
-                    // VIA should span from metal2 to metal3  
+                    // VIA should span from metal2 to metal3
                     // With embedded stacking: metal2 is above metal3, so connect bottom of metal2 to top of metal3
                     let expected_start = metal2_bounds.0; // Bottom of metal2
                     let expected_end = metal3_bounds.1; // Top of metal3

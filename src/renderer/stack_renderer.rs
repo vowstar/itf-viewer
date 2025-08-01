@@ -285,31 +285,40 @@ impl StackRenderer {
 
                 let via_height = (via_z_end - via_z_start).abs();
 
-                // Calculate via width based on connected metal layers
-                let via_width = self.calculate_via_width(via, stack, layer_width);
+                // Calculate via width based on connected metal layers (narrowest edge)
+                let via_width = self.calculate_via_width(via, stack, scaler);
 
-                // Create three vias corresponding to the three metal columns (left, center, right)
-                // Offset each via connection to prevent overlap when multiple vias connect same layers
-                let connection_offset = (via_index as f32) * layer_width * 0.1;
-                let via_positions = [
-                    -layer_width * 0.3 + connection_offset, // Left position
-                    0.0 + connection_offset,                // Center position
-                    layer_width * 0.3 + connection_offset,  // Right position
+                // Convert via center to screen coordinates first (same as metal logic)
+                let via_center_z = (via_z_start + via_z_end) * 0.5;
+                let world_center = Pos2::new(0.0, -via_center_z); // Center in world coords
+                let screen_center = transform.world_to_screen(world_center);
+                let screen_height = via_height * transform.scale;
+                let screen_width = via_width * transform.scale;
+
+                // Calculate screen layer width (same as metal logic)
+                let screen_layer_width = layer_width * transform.scale;
+
+                // Create three vias using SCREEN coordinate system (same as metal)
+                // Match the exact metal column positions: spacing = screen_layer_width / 4.0
+                let spacing = screen_layer_width / 4.0;
+                // Small offset for multiple via connections to prevent overlap
+                let connection_offset = (via_index as f32) * screen_layer_width * 0.02;
+
+                let screen_positions = [
+                    screen_center.x - spacing + connection_offset, // Left (matches metal left)
+                    screen_center.x + connection_offset,           // Center (matches metal center)
+                    screen_center.x + spacing + connection_offset, // Right (matches metal right)
                 ];
 
-                for (i, &x_position) in via_positions.iter().enumerate() {
-                    // Convert to screen coordinates
-                    let via_center_z = (via_z_start + via_z_end) * 0.5;
-                    let world_center = Pos2::new(x_position, -via_center_z); // Flip Y axis
-                    let screen_center = transform.world_to_screen(world_center);
-                    let screen_height = via_height * transform.scale;
-                    let screen_width = via_width * transform.scale;
+                for (i, &screen_x) in screen_positions.iter().enumerate() {
+                    // Create via rectangle directly in screen coordinates
+                    let via_screen_center = Pos2::new(screen_x, screen_center.y);
 
                     let via_color = self.color_scheme.get_via_color(via.get_via_type());
                     let stroke = Stroke::new(2.0, Color32::DARK_GRAY);
 
                     let rectangle = RectangleShape::new(
-                        screen_center,
+                        via_screen_center,
                         screen_width,
                         screen_height,
                         via_color,
@@ -335,31 +344,40 @@ impl StackRenderer {
         &self,
         via: &crate::data::ViaConnection,
         stack: &ProcessStack,
-        layer_width: f32,
+        scaler: &ThicknessScaler,
     ) -> f32 {
-        // Find the shortest edge of connected metal layers
-        let mut min_metal_width = layer_width * 0.2; // Default fallback
+        // Via width should be the minimum of the narrowest edges of connected metal layers
+        let mut min_metal_width = f32::INFINITY;
+        let mut found_metal = false;
 
         // Check from_layer
         if let Some(Layer::Conductor(conductor)) = stack.get_layer(&via.from_layer) {
-            // Calculate effective width based on trapezoid shape
-            let effective_width = self.calculate_metal_effective_width(conductor, layer_width);
+            let conductor_height =
+                scaler.get_exaggerated_thickness_for_layer(&Layer::Conductor(conductor.clone()));
+            let effective_width = self.calculate_metal_effective_width(conductor, conductor_height);
             min_metal_width = min_metal_width.min(effective_width);
+            found_metal = true;
         }
 
         // Check to_layer
         if let Some(Layer::Conductor(conductor)) = stack.get_layer(&via.to_layer) {
-            // Calculate effective width based on trapezoid shape
-            let effective_width = self.calculate_metal_effective_width(conductor, layer_width);
+            let conductor_height =
+                scaler.get_exaggerated_thickness_for_layer(&Layer::Conductor(conductor.clone()));
+            let effective_width = self.calculate_metal_effective_width(conductor, conductor_height);
             min_metal_width = min_metal_width.min(effective_width);
+            found_metal = true;
         }
 
-        // If one layer is non-metal (substrate), use the metal layer's effective width
+        // If no metal layers found, use a default based on via area
+        if !found_metal {
+            return via.get_via_width() as f32 * 10.0; // Scale up for visibility
+        }
+
+        // For contact vias (connecting to substrate), use a smaller width
         if via.is_contact_via() {
-            // For contact vias, use a smaller width
             min_metal_width * 0.8
         } else {
-            // For metal vias, use the minimum effective width
+            // For metal vias, via width cannot exceed the narrowest metal edge
             min_metal_width
         }
     }
@@ -367,27 +385,27 @@ impl StackRenderer {
     fn calculate_metal_effective_width(
         &self,
         conductor: &crate::data::ConductorLayer,
-        layer_width: f32,
+        conductor_height: f32,
     ) -> f32 {
-        // Calculate the effective width of a metal layer based on its trapezoid shape
-        let base_width = layer_width / 3.0; // Each of the three columns
+        // Calculate the narrowest edge width of the metal trapezoid
+        // This matches the logic in ThreeColumnTrapezoidShape::from_conductor_layer
 
-        if let Some(side_tangent) = conductor.physical_props.side_tangent {
-            let thickness = conductor.thickness as f32;
-            let width_reduction = (side_tangent.abs() as f32) * thickness;
+        // Metal trapezoid dimensions: long_edge = height * 2.0, short_edge = height * 1.0
+        let long_edge_width = conductor_height * 2.0;
+        let short_edge_width = conductor_height * 1.0;
 
-            // The narrower edge of the trapezoid
-            if side_tangent > 0.0 {
-                // Positive tangent: top is narrower
-                (base_width - width_reduction).max(base_width * 0.3)
-            } else {
-                // Negative tangent: bottom is narrower
-                (base_width - width_reduction).max(base_width * 0.3)
-            }
+        let side_tangent = conductor.physical_props.side_tangent.unwrap_or(0.0) as f32;
+
+        let (top_width, bottom_width) = if side_tangent >= 0.0 {
+            // Top wider (negative trapezoid - like etched metal)
+            (long_edge_width, short_edge_width)
         } else {
-            // Rectangle shape
-            base_width
-        }
+            // Top narrower (positive trapezoid - like deposited metal)
+            (short_edge_width, long_edge_width)
+        };
+
+        // Return the narrowest edge width
+        top_width.min(bottom_width)
     }
 
     pub fn calculate_ordered_layer_boundaries(
@@ -1432,6 +1450,187 @@ mod tests {
             let bounds = geometry.get_bounds();
             assert!((bounds.center().y - bounds1.center().y).abs() < 1e-6);
             assert!((bounds.height() - bounds1.height()).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_via_metal_alignment() {
+        let renderer = StackRenderer::new();
+
+        // Create stack with metal layers and via
+        let tech = TechnologyInfo::new("test_alignment".to_string());
+        let mut stack = ProcessStack::new(tech);
+
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal1".to_string(),
+            0.5,
+        ))));
+        stack.add_layer(Layer::Conductor(Box::new(ConductorLayer::new(
+            "metal2".to_string(),
+            0.3,
+        ))));
+
+        // Add via connection
+        use crate::data::ViaConnection;
+        let via = ViaConnection::new(
+            "alignment_via".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
+        stack.add_via(via);
+
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+
+        // Get metal geometries
+        let metal_geometries =
+            renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
+
+        // Get via geometries
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+
+        // Should have 3 vias for one connection
+        assert_eq!(via_geometries.len(), 3);
+
+        // Find metal geometries
+        let metal1_geom = metal_geometries
+            .iter()
+            .find(|g| g.layer_name == "metal1")
+            .unwrap();
+        let metal2_geom = metal_geometries
+            .iter()
+            .find(|g| g.layer_name == "metal2")
+            .unwrap();
+
+        // Verify that via positions align with metal column positions
+        // We cannot directly access metal column positions, but we can verify spacing consistency
+        let via_x_positions: Vec<f32> = via_geometries
+            .iter()
+            .map(|v| v.get_bounds().center().x)
+            .collect();
+
+        // Sort positions for consistent comparison
+        let mut sorted_positions = via_x_positions.clone();
+        sorted_positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // Check that vias are spaced correctly
+        if sorted_positions.len() >= 3 {
+            let spacing1 = sorted_positions[1] - sorted_positions[0];
+            let spacing2 = sorted_positions[2] - sorted_positions[1];
+
+            // Spacings should be approximately equal (allowing for connection offset)
+            let tolerance = 10.0; // Screen pixels tolerance
+            assert!(
+                (spacing1 - spacing2).abs() < tolerance,
+                "Via spacings should be approximately equal: {} vs {}",
+                spacing1,
+                spacing2
+            );
+        }
+
+        // Verify vias are within reasonable bounds of metal layers
+        let metal1_bounds = metal1_geom.get_bounds();
+        let metal2_bounds = metal2_geom.get_bounds();
+        let expected_width = metal1_bounds.width().max(metal2_bounds.width());
+
+        for via_geom in &via_geometries {
+            let via_center = via_geom.get_bounds().center();
+            // Via should be within the wider metal layer bounds plus some margin
+            let margin = expected_width * 0.6; // Allow 60% extra width for via spread
+            assert!(
+                via_center.x >= metal1_bounds.center().x - margin
+                    && via_center.x <= metal1_bounds.center().x + margin,
+                "Via at {} should be within metal bounds {} ± {}",
+                via_center.x,
+                metal1_bounds.center().x,
+                margin
+            );
+        }
+    }
+
+    #[test]
+    fn test_via_width_constraint() {
+        let renderer = StackRenderer::new();
+
+        // Create stack with trapezoid metals and via
+        let tech = TechnologyInfo::new("test_via_width".to_string());
+        let mut stack = ProcessStack::new(tech);
+
+        // Add trapezoid metal layer 1
+        let mut metal1 = ConductorLayer::new("metal1".to_string(), 0.5);
+        metal1.physical_props.side_tangent = Some(0.1); // Positive trapezoid
+        stack.add_layer(Layer::Conductor(Box::new(metal1)));
+
+        // Add trapezoid metal layer 2
+        let mut metal2 = ConductorLayer::new("metal2".to_string(), 0.3);
+        metal2.physical_props.side_tangent = Some(-0.05); // Negative trapezoid
+        stack.add_layer(Layer::Conductor(Box::new(metal2)));
+
+        // Add via connection
+        use crate::data::ViaConnection;
+        let via = ViaConnection::new(
+            "width_test_via".to_string(),
+            "metal1".to_string(),
+            "metal2".to_string(),
+            0.25,
+            5.0,
+        );
+        stack.add_via(via);
+
+        let transform = ViewTransform::new(Vec2::new(800.0, 600.0));
+        let viewport_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let mut scaler = ThicknessScaler::new();
+        scaler.analyze_stack(&stack);
+
+        // Get via geometries
+        let via_geometries =
+            renderer.create_via_geometries_with_scaler(&stack, &scaler, &transform, viewport_rect);
+
+        // Should have 3 vias for one connection
+        assert_eq!(via_geometries.len(), 3);
+
+        // Calculate expected maximum via width
+        // Metal1: height=0.5 exaggerated, narrowest edge = height * 1.0 = 0.5
+        // Metal2: height=0.3 exaggerated, narrowest edge = height * 1.0 = 0.3
+        // Via width should be min(0.5, 0.3) = 0.3 in world coordinates
+        let metal1_height = scaler.get_exaggerated_thickness_for_layer(&Layer::Conductor(
+            Box::new(ConductorLayer::new("metal1".to_string(), 0.5)),
+        ));
+        let metal2_height = scaler.get_exaggerated_thickness_for_layer(&Layer::Conductor(
+            Box::new(ConductorLayer::new("metal2".to_string(), 0.3)),
+        ));
+
+        let expected_max_width_world = (metal1_height * 1.0).min(metal2_height * 1.0);
+        let expected_max_width_screen = expected_max_width_world * transform.scale;
+
+        // Verify all vias have width <= expected maximum
+        for via_geom in &via_geometries {
+            let via_width = via_geom.get_bounds().width();
+            assert!(
+                via_width <= expected_max_width_screen + 1.0, // Small tolerance for floating point
+                "Via width {} exceeds maximum allowed width {} (metal constraint)",
+                via_width,
+                expected_max_width_screen
+            );
+        }
+
+        // Verify vias are reasonably sized (not too small)
+        let min_reasonable_width = expected_max_width_screen * 0.5;
+        for via_geom in &via_geometries {
+            let via_width = via_geom.get_bounds().width();
+            assert!(
+                via_width >= min_reasonable_width,
+                "Via width {} is too small (should be at least {})",
+                via_width,
+                min_reasonable_width
+            );
         }
     }
 
