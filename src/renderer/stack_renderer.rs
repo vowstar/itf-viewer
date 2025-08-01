@@ -321,9 +321,19 @@ impl StackRenderer {
                     // Create via rectangle directly in screen coordinates
                     let via_screen_center = Pos2::new(screen_x, screen_center.y);
 
-                    // Use silver-gray color for vias as requested
-                    let via_color = Color32::from_rgb(192, 192, 192); // Silver-gray color
-                    let stroke = Stroke::new(2.0, Color32::DARK_GRAY);
+                    // Check if this VIA will be selected
+                    let via_name = format!("{}_{}", via.name, i);
+                    let is_selected = self.selected_layer.as_deref() == Some(&via_name) ||
+                                    self.selected_layer.as_deref() == Some(&via.name);
+
+                    // Use different colors for selected vs normal VIAs
+                    let via_color = if is_selected {
+                        Color32::from_rgb(255, 215, 0) // Gold color for selected VIA
+                    } else {
+                        Color32::from_rgb(192, 192, 192) // Silver-gray color for normal VIA
+                    };
+                    let stroke = Stroke::new(if is_selected { 3.0 } else { 2.0 }, 
+                                           if is_selected { Color32::YELLOW } else { Color32::DARK_GRAY });
 
                     let rectangle = RectangleShape::new(
                         via_screen_center,
@@ -333,12 +343,18 @@ impl StackRenderer {
                         stroke,
                     );
 
-                    let geometry = LayerGeometry::new_rectangle(
-                        format!("{}_{}", via.name, i),
+                    let via_name = format!("{}_{}", via.name, i);
+                    let mut geometry = LayerGeometry::new_rectangle(
+                        via_name.clone(),
                         via_z_start.min(via_z_end),
                         via_z_start.max(via_z_end),
                         rectangle,
                     );
+
+                    // Check if this VIA is selected (check both full name and base name)
+                    let is_selected = self.selected_layer.as_deref() == Some(&via_name) ||
+                                    self.selected_layer.as_deref() == Some(&via.name);
+                    geometry.set_selected(is_selected);
 
                     geometries.push(geometry);
                 }
