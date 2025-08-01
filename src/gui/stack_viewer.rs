@@ -3,7 +3,9 @@
 
 use crate::data::ProcessStack;
 use crate::renderer::{StackRenderer, ViewTransform};
-use egui::{CentralPanel, Color32, Context, FontId, Frame, Painter, Pos2, Rect, Sense, Vec2};
+use egui::{
+    CentralPanel, Color32, Context, CursorIcon, FontId, Frame, Painter, Pos2, Rect, Sense, Vec2,
+};
 
 pub struct StackViewer {
     renderer: StackRenderer,
@@ -92,6 +94,17 @@ impl StackViewer {
     }
 
     fn handle_mouse_input(&mut self, ui: &mut egui::Ui, response: &egui::Response) {
+        // Set appropriate cursor icon based on interaction state
+        if response.hovered() {
+            if self.is_panning {
+                ui.output_mut(|output| output.cursor_icon = CursorIcon::Grabbing);
+            } else {
+                ui.output_mut(|output| output.cursor_icon = CursorIcon::Grab);
+            }
+        } else {
+            ui.output_mut(|output| output.cursor_icon = CursorIcon::Default);
+        }
+
         // Handle scrolling for zoom
         if response.hovered() {
             let scroll_delta = ui.input(|i| i.raw_scroll_delta);
@@ -112,6 +125,7 @@ impl StackViewer {
 
         // Handle panning
         if response.dragged() {
+            ui.output_mut(|output| output.cursor_icon = CursorIcon::Grabbing);
             if let Some(current_pos) = response.interact_pointer_pos() {
                 if let Some(last_pos) = self.last_mouse_pos {
                     let delta = (current_pos - last_pos) * self.pan_sensitivity;
@@ -121,6 +135,9 @@ impl StackViewer {
                 self.is_panning = true;
             }
         } else {
+            if self.is_panning {
+                ui.output_mut(|output| output.cursor_icon = CursorIcon::Default);
+            }
             self.is_panning = false;
             self.last_mouse_pos = None;
         }
@@ -287,29 +304,52 @@ impl StackViewer {
         _viewport_rect: Rect,
     ) {
         // Get layer geometries to know where to place text
+        // Use the same scaler as rendering to ensure consistency
+        let scaler = self.renderer.get_current_scaler(stack);
+
         let layer_geometries = self.renderer.create_layer_geometries_ordered(
             stack,
-            &self.renderer.thickness_scaler,
+            &scaler,
             transform,
             _viewport_rect,
         );
 
-        for geometry in layer_geometries {
+        println!(
+            "DEBUG: draw_layer_names called with {} geometries",
+            layer_geometries.len()
+        );
+
+        for (i, geometry) in layer_geometries.iter().enumerate() {
             let bounds = geometry.get_bounds();
             let label_pos = Pos2::new(bounds.center().x, bounds.center().y);
             let label_pos_screen = transform.world_to_screen(label_pos);
 
-            // Only show labels for layers thick enough (in screen space)
+            // Reduced height threshold from 15.0 to 5.0 for better visibility
             let height_screen = bounds.height() * transform.scale;
-            if height_screen > 15.0 {
+
+            println!(
+                "DEBUG: Layer {} '{}': height_screen={:.1}, bounds={:?}, screen_pos={:?}",
+                i, geometry.layer_name, height_screen, bounds, label_pos_screen
+            );
+
+            if height_screen > 5.0 {
                 let layer_name = &geometry.layer_name;
 
-                // Create text with proper font and size
-                let font_size = (12.0 * transform.scale).clamp(8.0, 16.0);
+                // Improved font scaling for better visibility
+                let font_size = (10.0 + 4.0 * transform.scale).clamp(8.0, 20.0);
                 let font_id = FontId::proportional(font_size);
+
+                println!(
+                    "DEBUG: Drawing text '{layer_name}' at {label_pos_screen:?} with font_size={font_size:.1}"
+                );
 
                 // Draw outlined text using your suggested method
                 self.paint_outlined_text(painter, label_pos_screen, layer_name, font_id);
+            } else {
+                println!(
+                    "DEBUG: Skipping '{}' - too small (height_screen={:.1} <= 5.0)",
+                    geometry.layer_name, height_screen
+                );
             }
         }
     }

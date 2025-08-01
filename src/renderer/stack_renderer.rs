@@ -21,7 +21,7 @@ pub struct StackRenderer {
     layer_width: f32,
     show_dimensions: bool,
     pub show_layer_names: bool,
-    show_schematic_mode: bool,
+    pub show_schematic_mode: bool,
     selected_layer: Option<String>,
     pub thickness_scaler: ThicknessScaler,
 }
@@ -578,6 +578,15 @@ impl StackRenderer {
         self.show_schematic_mode = show;
     }
 
+    /// Get the appropriate scaler based on current mode
+    pub fn get_current_scaler(&self, stack: &ProcessStack) -> ThicknessScaler {
+        if self.show_schematic_mode {
+            self.create_schematic_scaler(stack)
+        } else {
+            self.create_normal_scaler(stack)
+        }
+    }
+
     pub fn set_selected_layer(&mut self, layer_name: Option<String>) {
         self.selected_layer = layer_name;
     }
@@ -593,8 +602,8 @@ impl StackRenderer {
         viewport_rect: Rect,
         point: Pos2,
     ) -> Option<String> {
-        let mut scaler = self.thickness_scaler.clone();
-        scaler.analyze_stack(stack);
+        // Use the same scaler configuration as rendering to ensure coordinate consistency
+        let scaler = self.get_current_scaler(stack);
         let layer_geometries =
             self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
 
