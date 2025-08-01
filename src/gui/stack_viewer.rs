@@ -4,7 +4,7 @@
 use crate::data::ProcessStack;
 use crate::renderer::{StackRenderer, ViewTransform};
 use egui::{
-    CentralPanel, Color32, Context, CursorIcon, FontId, Frame, Painter, Pos2, Rect, Sense, Vec2,
+    CentralPanel, Color32, Context, CursorIcon, Frame, Pos2, Rect, Sense, Vec2,
 };
 
 pub struct StackViewer {
@@ -53,15 +53,10 @@ impl StackViewer {
                         .renderer
                         .render_stack(stack, &self.transform, viewport_rect);
 
-                    // Add shapes to the painter
+                    // Add shapes to the painter (layer names are now included in shapes for proper z-order)
                     let painter = ui.painter_at(viewport_rect);
                     for shape in shapes {
                         painter.add(shape);
-                    }
-
-                    // Draw layer names with outline if enabled
-                    if self.renderer.show_layer_names {
-                        self.draw_layer_names(&painter, stack, &self.transform, viewport_rect);
                     }
 
                     // Handle layer selection via mouse click
@@ -295,95 +290,6 @@ impl StackViewer {
         self.transform.get_visible_world_bounds()
     }
 
-    /// Draw layer names with black outline for better visibility
-    fn draw_layer_names(
-        &self,
-        painter: &Painter,
-        stack: &ProcessStack,
-        transform: &ViewTransform,
-        _viewport_rect: Rect,
-    ) {
-        // Get layer geometries to know where to place text
-        // Use the same scaler as rendering to ensure consistency
-        let scaler = self.renderer.get_current_scaler(stack);
-
-        let layer_geometries = self.renderer.create_layer_geometries_ordered(
-            stack,
-            &scaler,
-            transform,
-            _viewport_rect,
-        );
-
-        println!(
-            "DEBUG: draw_layer_names called with {} geometries",
-            layer_geometries.len()
-        );
-
-        for (i, geometry) in layer_geometries.iter().enumerate() {
-            let bounds = geometry.get_bounds();
-            let label_pos = Pos2::new(bounds.center().x, bounds.center().y);
-            let label_pos_screen = transform.world_to_screen(label_pos);
-
-            // Reduced height threshold from 15.0 to 5.0 for better visibility
-            let height_screen = bounds.height() * transform.scale;
-
-            println!(
-                "DEBUG: Layer {} '{}': height_screen={:.1}, bounds={:?}, screen_pos={:?}",
-                i, geometry.layer_name, height_screen, bounds, label_pos_screen
-            );
-
-            if height_screen > 5.0 {
-                let layer_name = &geometry.layer_name;
-
-                // Improved font scaling for better visibility
-                let font_size = (10.0 + 4.0 * transform.scale).clamp(8.0, 20.0);
-                let font_id = FontId::proportional(font_size);
-
-                println!(
-                    "DEBUG: Drawing text '{layer_name}' at {label_pos_screen:?} with font_size={font_size:.1}"
-                );
-
-                // Draw outlined text using your suggested method
-                self.paint_outlined_text(painter, label_pos_screen, layer_name, font_id);
-            } else {
-                println!(
-                    "DEBUG: Skipping '{}' - too small (height_screen={:.1} <= 5.0)",
-                    geometry.layer_name, height_screen
-                );
-            }
-        }
-    }
-
-    /// Paint text with black outline for better visibility
-    /// Based on the method suggested for egui 0.32.x
-    fn paint_outlined_text(&self, painter: &Painter, pos: Pos2, text: &str, font_id: FontId) {
-        // One-time layout, reuse for performance
-        let galley = painter.layout_no_wrap(text.to_owned(), font_id, Color32::WHITE);
-
-        // 1 pixel in egui points
-        let px = painter.pixels_per_point();
-        let o = 1.0f32 / px;
-
-        // Eight-directional offsets (4 neighbors + 4 corners)
-        let offsets = [
-            Vec2::new(-o, 0.0),
-            Vec2::new(o, 0.0),
-            Vec2::new(0.0, -o),
-            Vec2::new(0.0, o),
-            Vec2::new(-o, -o),
-            Vec2::new(-o, o),
-            Vec2::new(o, -o),
-            Vec2::new(o, o),
-        ];
-
-        // First draw black border
-        for off in offsets {
-            painter.galley_with_override_text_color(pos + off, galley.clone(), Color32::BLACK);
-        }
-
-        // Then draw white text (centered)
-        painter.galley_with_override_text_color(pos, galley, Color32::WHITE);
-    }
 }
 
 impl Default for StackViewer {

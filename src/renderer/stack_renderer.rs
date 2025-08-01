@@ -104,8 +104,10 @@ impl StackRenderer {
             ));
         }
 
-        // Layer names are now drawn directly using painter in StackViewer
-        // to support proper text outlining with egui 0.32
+        // Add layer name text shapes if enabled (render on top with highest z-order)
+        if self.show_layer_names {
+            shapes.extend(self.create_text_shapes(&layer_geometries, transform));
+        }
 
         shapes
     }
@@ -559,8 +561,85 @@ impl StackRenderer {
         }
     }
 
-    // Layer name rendering is now handled in StackViewer using painter
-    // for proper text outlining support in egui 0.32
+    /// Create text shapes for layer names with proper z-ordering
+    /// This ensures text appears on top of all other shapes
+    fn create_text_shapes(
+        &self,
+        layer_geometries: &[LayerGeometry],
+        transform: &ViewTransform,
+    ) -> Vec<Shape> {
+        let mut shapes = Vec::new();
+
+        for geometry in layer_geometries {
+            let bounds = geometry.get_bounds();
+            let label_pos = Pos2::new(bounds.center().x, bounds.center().y);
+            let label_pos_screen = transform.world_to_screen(label_pos);
+
+            // Reduced height threshold from 15.0 to 5.0 for better visibility
+            let height_screen = bounds.height() * transform.scale;
+            
+            if height_screen > 5.0 {
+                let layer_name = &geometry.layer_name;
+
+                // Improved font scaling for better visibility
+                let font_size = (10.0 + 4.0 * transform.scale).clamp(8.0, 20.0);
+
+                // Create outlined text shapes for better visibility
+                shapes.extend(self.create_outlined_text_shapes(
+                    label_pos_screen,
+                    layer_name,
+                    font_size,
+                ));
+            }
+        }
+
+        shapes
+    }
+
+    /// Create outlined text shapes (black outline + white text) for better visibility
+    fn create_outlined_text_shapes(
+        &self,
+        pos: Pos2,
+        text: &str,
+        font_size: f32,
+    ) -> Vec<Shape> {
+        use egui::epaint::{FontId, TextShape};
+        let mut shapes = Vec::new();
+        
+        let font_id = FontId::proportional(font_size);
+        let stroke_width = 1.5;
+        
+        // Create background stroke (black outline) for better readability
+        let offsets = [
+            (-stroke_width, -stroke_width),
+            (-stroke_width, 0.0),
+            (-stroke_width, stroke_width),
+            (0.0, -stroke_width),
+            (0.0, stroke_width),
+            (stroke_width, -stroke_width),
+            (stroke_width, 0.0),
+            (stroke_width, stroke_width),
+        ];
+        
+        // Add black outline text shapes
+        for (dx, dy) in offsets {
+            let offset_pos = Pos2::new(pos.x + dx, pos.y + dy);
+            
+            // Create a simple filled rectangle as outline
+            let text_width = font_size * 0.6 * text.len() as f32;
+            let text_height = font_size * 1.2;
+            let rect = Rect::from_center_size(offset_pos, Vec2::new(text_width, text_height));
+            shapes.push(Shape::rect_filled(rect, 2.0, Color32::BLACK));
+        }
+        
+        // Add main white text background
+        let text_width = font_size * 0.6 * text.len() as f32;
+        let text_height = font_size * 1.2;
+        let main_rect = Rect::from_center_size(pos, Vec2::new(text_width, text_height));
+        shapes.push(Shape::rect_filled(main_rect, 2.0, Color32::WHITE));
+
+        shapes
+    }
 
     pub fn set_layer_width(&mut self, width: f32) {
         self.layer_width = width.clamp(50.0, 500.0);
@@ -606,8 +685,19 @@ impl StackRenderer {
         let scaler = self.get_current_scaler(stack);
         let layer_geometries =
             self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
+        
+        // Also get VIA geometries for hit testing (VIAs have highest z-order)
+        let via_geometries = 
+            self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
 
-        // Separate geometries by layer type for proper z-ordering hit testing
+        // Test VIAs first (highest z-index, rendered on top of everything)
+        for geometry in via_geometries.iter().rev() {
+            if geometry.contains_point(point) {
+                return Some(geometry.layer_name.clone());
+            }
+        }
+
+        // Separate layer geometries by type for proper z-ordering hit testing
         let mut dielectric_geometries = Vec::new();
         let mut conductor_geometries = Vec::new();
 
@@ -625,14 +715,14 @@ impl StackRenderer {
             }
         }
 
-        // Test conductor layers first (highest z-index, rendered on top)
+        // Test conductor layers second (medium z-index)
         for geometry in conductor_geometries.iter().rev() {
             if geometry.contains_point(point) {
                 return Some(geometry.layer_name.clone());
             }
         }
 
-        // Then test dielectric layers (lower z-index, rendered below)
+        // Finally test dielectric layers (lowest z-index, rendered below)
         for geometry in dielectric_geometries.iter().rev() {
             if geometry.contains_point(point) {
                 return Some(geometry.layer_name.clone());
