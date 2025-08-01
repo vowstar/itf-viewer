@@ -134,6 +134,11 @@ impl MainWindow {
                 self.stack_viewer.set_show_layer_names(show);
                 self.toolbar.set_show_layer_names(show);
             }
+
+            ToolbarAction::ToggleSchematicMode(show) => {
+                self.stack_viewer.set_show_schematic_mode(show);
+                self.toolbar.set_show_schematic_mode(show);
+            }
         }
     }
 

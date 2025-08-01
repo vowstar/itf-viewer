@@ -14,6 +14,8 @@ pub struct ThicknessScaler {
     pub max_ratio: f32,
     /// Actual thickness range from the stack
     thickness_range: Option<(f32, f32)>, // (min_thickness, max_thickness)
+    /// Whether this scaler is in schematic mode (true) or normal mode (false)
+    schematic_mode: bool,
 }
 
 impl ThicknessScaler {
@@ -23,6 +25,7 @@ impl ThicknessScaler {
             min_ratio: 0.3, // 30%
             max_ratio: 1.0, // 100%
             thickness_range: None,
+            schematic_mode: false, // Default to normal mode
         }
     }
 
@@ -32,6 +35,7 @@ impl ThicknessScaler {
             min_ratio: min_ratio.clamp(0.1, 0.9),
             max_ratio: max_ratio.clamp(0.5, 1.0),
             thickness_range: None,
+            schematic_mode: false, // Default to normal mode
         }
     }
 
@@ -63,18 +67,50 @@ impl ThicknessScaler {
         }
     }
 
+    /// Set the thickness scaler to schematic mode with custom min/max thickness
+    pub fn set_schematic_mode(&mut self, min_thickness: f64, max_thickness: f64) {
+        self.thickness_range = Some((min_thickness as f32, max_thickness as f32));
+        // In schematic mode, we want 30% to 100% mapping
+        self.min_ratio = 0.3;
+        self.max_ratio = 1.0;
+        self.schematic_mode = true;
+    }
+
+    /// Set the thickness scaler to normal mode (1:1 scaling)
+    pub fn set_normal_mode(&mut self) {
+        self.schematic_mode = false;
+        self.min_ratio = 1.0;
+        self.max_ratio = 1.0;
+    }
+
     /// Get the exaggerated thickness for a given actual thickness
     pub fn get_exaggerated_thickness(&self, actual_thickness: f32) -> f32 {
+        // Handle zero thickness layers specially
+        if actual_thickness <= 0.0 {
+            return 0.0;
+        }
+
+        // In normal mode, return the original thickness without any scaling
+        if !self.schematic_mode {
+            return actual_thickness;
+        }
+
+        // In schematic mode, apply the 30%-100% mapping
         match self.thickness_range {
             Some((min_thick, max_thick)) if max_thick > min_thick => {
-                // Proportional scaling between min_ratio and max_ratio
+                // In schematic mode, we map thickness values directly to the 30%-100% range
+                // The min_ratio and max_ratio represent the target display ratios
                 let normalized = (actual_thickness - min_thick) / (max_thick - min_thick);
-                let scale_factor = self.min_ratio + normalized * (self.max_ratio - self.min_ratio);
-                actual_thickness * scale_factor
+                let target_ratio = self.min_ratio + normalized * (self.max_ratio - self.min_ratio);
+
+                // Convert the ratio to an actual thickness
+                // In schematic mode, we want consistent layer heights based on the ratio
+                let base_thickness = max_thick; // Use max thickness as reference
+                base_thickness * target_ratio
             }
-            Some((_thickness, _)) => {
+            Some((thickness, _)) => {
                 // All layers same thickness, use max ratio
-                actual_thickness * self.max_ratio
+                thickness * self.max_ratio
             }
             None => {
                 // No valid thickness range, return original
@@ -85,8 +121,14 @@ impl ThicknessScaler {
 
     /// Get the exaggerated thickness for a layer, with special handling for auto-created layers
     pub fn get_exaggerated_thickness_for_layer(&self, layer: &crate::data::Layer) -> f32 {
+        // In normal mode, always return original thickness regardless of layer type
+        if !self.schematic_mode {
+            return layer.thickness() as f32;
+        }
+
+        // In schematic mode, handle auto-created layers specially
         if layer.is_auto_created() {
-            // Auto-created layers get 200% thickness display
+            // Auto-created layers get 200% thickness display in schematic mode
             (layer.thickness() as f32) * 2.0
         } else {
             self.get_exaggerated_thickness(layer.thickness() as f32)

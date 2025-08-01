@@ -6,6 +6,7 @@ use egui::{Context, Slider, TopBottomPanel};
 pub struct Toolbar {
     pub show_dimensions: bool,
     pub show_layer_names: bool,
+    pub show_schematic_mode: bool,
     pub layer_width: f32,
     pub zoom_level: f32,
 }
@@ -15,6 +16,7 @@ impl Toolbar {
         Self {
             show_dimensions: true,
             show_layer_names: true,
+            show_schematic_mode: false,
             layer_width: 200.0,
             zoom_level: 1.0,
         }
@@ -145,6 +147,12 @@ impl Toolbar {
                     if names_response.clicked() {
                         action = ToolbarAction::ToggleLayerNames(self.show_layer_names);
                     }
+
+                    let schematic_response =
+                        ui.checkbox(&mut self.show_schematic_mode, "Schematic Mode");
+                    if schematic_response.clicked() {
+                        action = ToolbarAction::ToggleSchematicMode(self.show_schematic_mode);
+                    }
                 });
             });
 
@@ -161,6 +169,10 @@ impl Toolbar {
 
     pub fn set_show_layer_names(&mut self, show: bool) {
         self.show_layer_names = show;
+    }
+
+    pub fn set_show_schematic_mode(&mut self, show: bool) {
+        self.show_schematic_mode = show;
     }
 
     pub fn set_layer_width(&mut self, width: f32) {
@@ -187,6 +199,7 @@ pub enum ToolbarAction {
     SetLayerWidth(f32),
     ToggleDimensions(bool),
     ToggleLayerNames(bool),
+    ToggleSchematicMode(bool),
 }
 
 #[cfg(test)]

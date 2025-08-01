@@ -215,6 +215,10 @@ impl StackViewer {
         self.renderer.set_show_layer_names(show);
     }
 
+    pub fn set_show_schematic_mode(&mut self, show: bool) {
+        self.renderer.set_show_schematic_mode(show);
+    }
+
     pub fn set_layer_width(&mut self, width: f32) {
         self.renderer.set_layer_width(width);
     }

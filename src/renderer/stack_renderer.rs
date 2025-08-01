@@ -21,6 +21,7 @@ pub struct StackRenderer {
     layer_width: f32,
     show_dimensions: bool,
     show_layer_names: bool,
+    show_schematic_mode: bool,
     selected_layer: Option<String>,
     thickness_scaler: ThicknessScaler,
 }
@@ -32,6 +33,7 @@ impl StackRenderer {
             layer_width: 200.0,
             show_dimensions: true,
             show_layer_names: true,
+            show_schematic_mode: false,
             selected_layer: None,
             thickness_scaler: ThicknessScaler::new(),
         }
@@ -45,9 +47,13 @@ impl StackRenderer {
     ) -> Vec<Shape> {
         let mut shapes = Vec::new();
 
-        // Analyze stack for thickness exaggeration
-        let mut scaler = self.thickness_scaler.clone();
-        scaler.analyze_stack(stack);
+        // Choose the appropriate scaler based on mode
+        let scaler = if self.show_schematic_mode {
+            self.create_schematic_scaler(stack)
+        } else {
+            // For normal mode, use 1:1 scaling (no exaggeration)
+            self.create_normal_scaler(stack)
+        };
 
         // Calculate layer positions and create geometries with proper stacking order
         let layer_geometries =
@@ -88,8 +94,8 @@ impl StackRenderer {
             shapes.extend(geometry.to_egui_shapes());
         }
 
-        // Add dimension annotations
-        if self.show_dimensions {
+        // Add dimension annotations (but not in schematic mode)
+        if self.show_dimensions && !self.show_schematic_mode {
             shapes.extend(self.create_dimension_shapes_with_scaler(
                 stack,
                 &scaler,
@@ -588,6 +594,10 @@ impl StackRenderer {
         self.show_layer_names = show;
     }
 
+    pub fn set_show_schematic_mode(&mut self, show: bool) {
+        self.show_schematic_mode = show;
+    }
+
     pub fn set_selected_layer(&mut self, layer_name: Option<String>) {
         self.selected_layer = layer_name;
     }
@@ -648,9 +658,13 @@ impl StackRenderer {
             return Rect::NOTHING;
         }
 
-        // Use exaggerated thickness for bounds calculation
-        let mut scaler = self.thickness_scaler.clone();
-        scaler.analyze_stack(stack);
+        // Choose the appropriate scaler based on mode
+        let scaler = if self.show_schematic_mode {
+            self.create_schematic_scaler(stack)
+        } else {
+            self.create_normal_scaler(stack)
+        };
+
         let total_height = scaler.get_exaggerated_total_height(stack);
         let half_width = self.layer_width * 0.5;
 
@@ -690,6 +704,58 @@ impl StackRenderer {
             );
         }
     }
+
+    /// Create a special scaler for schematic mode that maps layer thicknesses
+    /// from 30% (thinnest) to 100% (thickest) linearly
+    fn create_schematic_scaler(&self, stack: &ProcessStack) -> ThicknessScaler {
+        if stack.layers.is_empty() {
+            let mut scaler = self.thickness_scaler.clone();
+            scaler.analyze_stack(stack);
+            return scaler;
+        }
+
+        // Collect all non-zero layer thicknesses for schematic mode
+        let mut thicknesses = Vec::new();
+        for layer in &stack.layers {
+            let thickness = layer.thickness();
+            if thickness > 0.0 {
+                // Only include non-zero thicknesses
+                thicknesses.push(thickness);
+            }
+        }
+
+        if thicknesses.is_empty() {
+            // Fallback to normal scaler if no valid thicknesses
+            let mut scaler = self.thickness_scaler.clone();
+            scaler.analyze_stack(stack);
+            return scaler;
+        }
+
+        // Find min and max thickness from non-zero values
+        let min_thickness = thicknesses.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max_thickness = thicknesses
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        // Create a custom scaler that implements the 30%-100% mapping
+        let mut scaler = ThicknessScaler::new();
+
+        // Set custom scaling parameters for schematic mode
+        scaler.set_schematic_mode(min_thickness, max_thickness);
+        scaler.analyze_stack(stack);
+
+        scaler
+    }
+
+    /// Create a scaler for normal mode that shows layers at true scale
+    fn create_normal_scaler(&self, stack: &ProcessStack) -> ThicknessScaler {
+        // In normal mode, all layers are shown at their true thickness (1:1 scaling)
+        let mut scaler = ThicknessScaler::new();
+        scaler.set_normal_mode(); // Ensure it's in normal mode
+        scaler.analyze_stack(stack);
+        scaler
+    }
 }
 
 impl Default for StackRenderer {
@@ -705,6 +771,7 @@ impl Clone for StackRenderer {
             layer_width: self.layer_width,
             show_dimensions: self.show_dimensions,
             show_layer_names: self.show_layer_names,
+            show_schematic_mode: self.show_schematic_mode,
             selected_layer: self.selected_layer.clone(),
             thickness_scaler: self.thickness_scaler.clone(),
         }
