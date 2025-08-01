@@ -104,8 +104,8 @@ impl Toolbar {
                     // Zoom level display and control
                     ui.label("Zoom:");
                     let zoom_response = ui.add(
-                        Slider::new(&mut self.zoom_level, 0.1..=10.0)
-                            .step_by(0.1)
+                        Slider::new(&mut self.zoom_level, 0.01..=1000.0)
+                            .step_by(0.01)
                             .suffix("x")
                             .logarithmic(true)
                     );

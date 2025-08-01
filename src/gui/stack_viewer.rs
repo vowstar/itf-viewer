@@ -216,7 +216,8 @@ impl StackViewer {
 
     pub fn set_zoom(&mut self, zoom: f32) {
         let center = self.transform.viewport_size * 0.5;
-        let target_zoom = zoom.clamp(0.1, 10.0);
+        // Remove upper limit, only keep minimum zoom
+        let target_zoom = zoom.max(0.01);
         let zoom_factor = target_zoom / self.transform.scale;
         self.transform.zoom(zoom_factor, Pos2::new(center.x, center.y));
     }
@@ -302,12 +303,12 @@ mod tests {
         viewer.set_zoom(2.0);
         assert!((viewer.get_zoom() - 2.0).abs() < 0.01);
         
-        // Test zoom bounds
-        viewer.set_zoom(20.0); // Above max
-        assert!(viewer.get_zoom() <= 10.0);
+        // Test zoom bounds (no upper limit now)
+        viewer.set_zoom(20.0); // Should work now
+        assert!((viewer.get_zoom() - 20.0).abs() < 0.01);
         
-        viewer.set_zoom(0.01); // Below min
-        assert!(viewer.get_zoom() >= 0.1);
+        viewer.set_zoom(0.005); // Below min
+        assert!(viewer.get_zoom() >= 0.01);
     }
 
     #[test]

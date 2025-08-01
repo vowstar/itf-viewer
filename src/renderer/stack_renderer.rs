@@ -443,7 +443,12 @@ impl StackRenderer {
     pub fn auto_fit(&self, stack: &ProcessStack, transform: &mut ViewTransform) {
         let bounds = self.get_stack_bounds(stack);
         if bounds.width() > 0.0 && bounds.height() > 0.0 {
-            transform.fit_bounds(bounds, 100.0);
+            // Calculate margin to make stack occupy 90% of viewport
+            // 5% margin on each side = 10% total margin
+            let margin_ratio = 0.05; // 5% margin on each side
+            let viewport_size = transform.viewport_size;
+            let margin = viewport_size.x.min(viewport_size.y) * margin_ratio;
+            transform.fit_bounds(bounds, margin);
         }
     }
 }

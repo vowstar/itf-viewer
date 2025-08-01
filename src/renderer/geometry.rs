@@ -522,7 +522,8 @@ impl ViewTransform {
 
     pub fn zoom(&mut self, zoom_factor: f32, zoom_center: Pos2) {
         let old_scale = self.scale;
-        self.scale = (self.scale * zoom_factor).clamp(0.1, 10.0);
+        // Remove upper limit for zoom, only keep minimum scale
+        self.scale = (self.scale * zoom_factor).max(0.01);
         
         let scale_ratio = self.scale / old_scale;
         let _world_center = self.screen_to_world(zoom_center);
@@ -542,7 +543,8 @@ impl ViewTransform {
         
         let scale_x = available_size.x / bounds_size.x;
         let scale_y = available_size.y / bounds_size.y;
-        self.scale = scale_x.min(scale_y).clamp(0.1, 10.0);
+        // Remove upper limit for fit_bounds as well
+        self.scale = scale_x.min(scale_y).max(0.01);
         
         let bounds_center = bounds.center();
         self.offset = Vec2::new(
