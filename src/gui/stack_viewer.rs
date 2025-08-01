@@ -89,17 +89,6 @@ impl StackViewer {
     }
 
     fn handle_mouse_input(&mut self, ui: &mut egui::Ui, response: &egui::Response) {
-        // Set appropriate cursor icon based on interaction state
-        if response.hovered() {
-            if self.is_panning {
-                ui.output_mut(|output| output.cursor_icon = CursorIcon::Grabbing);
-            } else {
-                ui.output_mut(|output| output.cursor_icon = CursorIcon::Grab);
-            }
-        } else {
-            ui.output_mut(|output| output.cursor_icon = CursorIcon::Default);
-        }
-
         // Handle scrolling for zoom
         if response.hovered() {
             let scroll_delta = ui.input(|i| i.raw_scroll_delta);
@@ -120,7 +109,6 @@ impl StackViewer {
 
         // Handle panning
         if response.dragged() {
-            ui.output_mut(|output| output.cursor_icon = CursorIcon::Grabbing);
             if let Some(current_pos) = response.interact_pointer_pos() {
                 if let Some(last_pos) = self.last_mouse_pos {
                     let delta = (current_pos - last_pos) * self.pan_sensitivity;
@@ -130,12 +118,20 @@ impl StackViewer {
                 self.is_panning = true;
             }
         } else {
-            if self.is_panning {
-                ui.output_mut(|output| output.cursor_icon = CursorIcon::Default);
-            }
             self.is_panning = false;
             self.last_mouse_pos = None;
         }
+
+        // Set cursor icon once at the end based on final state - prevents race conditions
+        let cursor_icon = if response.dragged() || self.is_panning {
+            CursorIcon::Grabbing
+        } else if response.hovered() {
+            CursorIcon::Grab
+        } else {
+            CursorIcon::Default
+        };
+        
+        ui.output_mut(|output| output.cursor_icon = cursor_icon);
     }
 
     fn handle_keyboard_input(&mut self, ui: &mut egui::Ui) {
