@@ -53,12 +53,35 @@ impl StackRenderer {
         let layer_geometries = self.create_layer_geometries_ordered(stack, &scaler, transform, viewport_rect);
         let via_geometries = self.create_via_geometries_with_scaler(stack, &scaler, transform, viewport_rect);
 
-        // Render layers from bottom to top
+        // Separate geometries by layer type for proper z-ordering
+        let mut dielectric_geometries = Vec::new();
+        let mut conductor_geometries = Vec::new();
+
         for geometry in &layer_geometries {
+            // Check if this is a conductor layer by looking at the shape type
+            match &geometry.shape {
+                LayerShape::ThreeColumnTrapezoid(_) => {
+                    // All conductor layers use ThreeColumnTrapezoid
+                    conductor_geometries.push(geometry);
+                }
+                _ => {
+                    // All other shapes are dielectric layers
+                    dielectric_geometries.push(geometry);
+                }
+            }
+        }
+
+        // Render dielectric layers first (bottom z-index)
+        for geometry in &dielectric_geometries {
             shapes.extend(geometry.to_egui_shapes());
         }
 
-        // Render vias on top of layers
+        // Render conductor layers second (higher z-index, will appear on top)
+        for geometry in &conductor_geometries {
+            shapes.extend(geometry.to_egui_shapes());
+        }
+
+        // Render vias on top of all layers (highest z-index)
         for geometry in &via_geometries {
             shapes.extend(geometry.to_egui_shapes());
         }
