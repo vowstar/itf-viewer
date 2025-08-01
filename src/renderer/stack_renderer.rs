@@ -165,39 +165,21 @@ impl StackRenderer {
         
         match params.layer {
             Layer::Conductor(conductor) => {
-                if conductor.is_trapezoid() {
-                    // Use multiple trapezoids for better visualization (minimum 3)
-                    let num_trapezoids = 5; // Default to 5 trapezoids per conductor
-                    let multi_trapezoid = MultiTrapezoidShape::from_conductor_layer(
-                        conductor,
-                        Pos2::new(screen_bottom.x, screen_bottom.y),
-                        screen_width,
-                        screen_height,
-                        color,
-                        stroke,
-                        num_trapezoids,
-                    );
-                    LayerGeometry::new_multi_trapezoid(
-                        params.layer.name().to_string(),
-                        params.z_bottom,
-                        params.z_top,
-                        multi_trapezoid,
-                    )
-                } else {
-                    let rectangle = RectangleShape::new(
-                        Pos2::new(screen_bottom.x, screen_bottom.y - screen_height * 0.5),
-                        screen_width,
-                        screen_height,
-                        color,
-                        stroke,
-                    );
-                    LayerGeometry::new_rectangle(
-                        params.layer.name().to_string(),
-                        params.z_bottom,
-                        params.z_top,
-                        rectangle,
-                    )
-                }
+                // 所有导体层都使用三列梯形布局
+                let three_column_trapezoid = ThreeColumnTrapezoidShape::from_conductor_layer(
+                    conductor,
+                    Pos2::new(screen_bottom.x, screen_bottom.y),
+                    screen_width,
+                    screen_height,
+                    color,
+                    stroke,
+                );
+                LayerGeometry::new_three_column_trapezoid(
+                    params.layer.name().to_string(),
+                    params.z_bottom,
+                    params.z_top,
+                    three_column_trapezoid,
+                )
             }
             Layer::Dielectric(_) => {
                 let rectangle = RectangleShape::new(
@@ -780,20 +762,21 @@ mod tests {
         assert_eq!(geometries.len(), 1);
         let conductor_geometry = &geometries[0];
         
-        // Verify it's using MultiTrapezoid shape
+        // Verify it's using ThreeColumnTrapezoid shape
         match &conductor_geometry.shape {
-            LayerShape::MultiTrapezoid(multi_trap) => {
-                // Should have at least 3 trapezoids (our minimum)
-                assert!(multi_trap.trapezoids.len() >= 3);
-                // With our default, should have exactly 5
-                assert_eq!(multi_trap.trapezoids.len(), 5);
+            LayerShape::ThreeColumnTrapezoid(three_trap) => {
+                // Should have exactly 3 trapezoids (left, center, right)
+                // Verify that all trapezoids exist
+                assert!(three_trap.left_trapezoid.bottom_left.x != 0.0);
+                assert!(three_trap.center_trapezoid.bottom_left.x != 0.0);
+                assert!(three_trap.right_trapezoid.bottom_left.x != 0.0);
             }
-            _ => panic!("Conductor with side_tangent should use MultiTrapezoid shape"),
+            _ => panic!("Conductor with side_tangent should use ThreeColumnTrapezoid shape"),
         }
         
-        // Verify it generates multiple shapes for rendering
+        // Verify it generates exactly 3 shapes for rendering (left, center, right)
         let shapes = conductor_geometry.to_egui_shapes();
-        assert_eq!(shapes.len(), 5); // Should generate 5 shapes for 5 trapezoids
+        assert_eq!(shapes.len(), 3); // Should generate 3 shapes for 3 trapezoids
     }
 
     #[test]
@@ -818,17 +801,21 @@ mod tests {
         assert_eq!(geometries.len(), 1);
         let conductor_geometry = &geometries[0];
         
-        // Verify it's using Rectangle shape (not multi-trapezoid)
+        // Verify it's using ThreeColumnTrapezoid shape (all conductors now use this)
         match &conductor_geometry.shape {
-            LayerShape::Rectangle(_) => {
-                // This is expected for non-trapezoid conductors
+            LayerShape::ThreeColumnTrapezoid(three_trap) => {
+                // Should have exactly 3 trapezoids (left, center, right)
+                // Verify that all trapezoids exist
+                assert!(three_trap.left_trapezoid.bottom_left.x != 0.0);
+                assert!(three_trap.center_trapezoid.bottom_left.x != 0.0);
+                assert!(three_trap.right_trapezoid.bottom_left.x != 0.0);
             }
-            _ => panic!("Conductor without side_tangent should use Rectangle shape"),
+            _ => panic!("Conductor without side_tangent should use ThreeColumnTrapezoid shape"),
         }
         
-        // Should generate only 1 shape for rectangle
+        // Should generate exactly 3 shapes for 3 trapezoids
         let shapes = conductor_geometry.to_egui_shapes();
-        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes.len(), 3);
     }
 
     #[test]

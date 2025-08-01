@@ -239,10 +239,10 @@ mod tests {
         scaler.analyze_stack(&stack);
         let geometries = renderer.create_layer_geometries_ordered(&stack, &scaler, &transform, viewport_rect);
         
-        // Find a conductor with multi-trapezoid shape
+        // Find a conductor with three-column trapezoid shape
         let conductor_geom = geometries.iter().find(|g| {
-            matches!(g.shape, LayerShape::MultiTrapezoid(_))
-        }).expect("Should have multi-trapezoid conductor");
+            matches!(g.shape, LayerShape::ThreeColumnTrapezoid(_))
+        }).expect("Should have three-column trapezoid conductor");
         
         let bounds = conductor_geom.get_bounds();
         let center_point = bounds.center();

@@ -179,6 +179,13 @@ pub struct MultiTrapezoidShape {
     pub trapezoids: Vec<TrapezoidShape>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ThreeColumnTrapezoidShape {
+    pub left_trapezoid: TrapezoidShape,
+    pub center_trapezoid: TrapezoidShape,
+    pub right_trapezoid: TrapezoidShape,
+}
+
 impl MultiTrapezoidShape {
     pub fn from_conductor_layer(
         layer: &ConductorLayer,
@@ -250,10 +257,114 @@ impl MultiTrapezoidShape {
     }
 }
 
+impl ThreeColumnTrapezoidShape {
+    pub fn from_conductor_layer(
+        layer: &ConductorLayer,
+        bottom_center: Pos2,
+        layer_width: f32,
+        height: f32,
+        fill_color: Color32,
+        stroke: Stroke,
+    ) -> Self {
+        let side_tangent = layer.physical_props.side_tangent.unwrap_or(0.0) as f32;
+        
+        // 计算梯形尺寸: 长边宽度 = 高度 × 2, 短边宽度 = 高度 × 1
+        let long_edge_width = height * 2.0;
+        let short_edge_width = height * 1.0;
+        
+        // 图形被等分为4份，梯形占据3列
+        let column_width = layer_width / 4.0;
+        let spacing = column_width; // 间距是1/4宽度
+        
+        // 计算3个梯形的中心位置
+        let left_center = Pos2::new(bottom_center.x - spacing, bottom_center.y);
+        let center_center = bottom_center;  // 中间梯形在中心
+        let right_center = Pos2::new(bottom_center.x + spacing, bottom_center.y);
+        
+        // 根据side_tangent确定顶部和底部宽度
+        let (top_width, bottom_width) = if side_tangent >= 0.0 {
+            // 顶部更宽（负梯形 - 像蚀刻金属）
+            (long_edge_width, short_edge_width)
+        } else {
+            // 顶部更窄（正梯形 - 像沉积金属）  
+            (short_edge_width, long_edge_width)
+        };
+        
+        // 创建3个梯形，使用自定义宽度而不是基于layer_width
+        let left_trapezoid = Self::create_custom_trapezoid(
+            left_center, top_width, bottom_width, height, side_tangent, fill_color, stroke
+        );
+        
+        let center_trapezoid = Self::create_custom_trapezoid(
+            center_center, top_width, bottom_width, height, side_tangent, fill_color, stroke
+        );
+        
+        let right_trapezoid = Self::create_custom_trapezoid(
+            right_center, top_width, bottom_width, height, side_tangent, fill_color, stroke
+        );
+        
+        Self {
+            left_trapezoid,
+            center_trapezoid,
+            right_trapezoid,
+        }
+    }
+    
+    fn create_custom_trapezoid(
+        bottom_center: Pos2,
+        top_width: f32,
+        bottom_width: f32,
+        height: f32,
+        _side_tangent: f32,
+        fill_color: Color32,
+        stroke: Stroke,
+    ) -> TrapezoidShape {
+        let half_top_width = top_width * 0.5;
+        let half_bottom_width = bottom_width * 0.5;
+        
+        let bottom_left = Pos2::new(bottom_center.x - half_bottom_width, bottom_center.y);
+        let bottom_right = Pos2::new(bottom_center.x + half_bottom_width, bottom_center.y);
+        let top_left = Pos2::new(bottom_center.x - half_top_width, bottom_center.y - height);
+        let top_right = Pos2::new(bottom_center.x + half_top_width, bottom_center.y - height);
+        
+        TrapezoidShape {
+            bottom_left,
+            bottom_right,
+            top_left,
+            top_right,
+            fill_color,
+            stroke,
+        }
+    }
+    
+    pub fn to_egui_shapes(&self) -> Vec<Shape> {
+        vec![
+            self.left_trapezoid.to_egui_shape(),
+            self.center_trapezoid.to_egui_shape(),
+            self.right_trapezoid.to_egui_shape(),
+        ]
+    }
+    
+    pub fn contains_point(&self, point: Pos2) -> bool {
+        self.left_trapezoid.contains_point(point) ||
+        self.center_trapezoid.contains_point(point) ||
+        self.right_trapezoid.contains_point(point)
+    }
+    
+    pub fn get_bounds(&self) -> Rect {
+        let left_bounds = self.left_trapezoid.get_bounds();
+        let center_bounds = self.center_trapezoid.get_bounds();
+        let right_bounds = self.right_trapezoid.get_bounds();
+        
+        left_bounds.union(center_bounds).union(right_bounds)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum LayerShape {
     Trapezoid(TrapezoidShape),
     MultiTrapezoid(MultiTrapezoidShape),
+    ThreeColumnTrapezoid(ThreeColumnTrapezoidShape),
     Rectangle(RectangleShape),
 }
 
@@ -288,6 +399,21 @@ impl LayerGeometry {
         }
     }
 
+    pub fn new_three_column_trapezoid(
+        layer_name: String,
+        z_bottom: f32,
+        z_top: f32,
+        three_column_trapezoids: ThreeColumnTrapezoidShape,
+    ) -> Self {
+        Self {
+            layer_name,
+            z_bottom,
+            z_top,
+            shape: LayerShape::ThreeColumnTrapezoid(three_column_trapezoids),
+            is_selected: false,
+        }
+    }
+
     pub fn new_rectangle(
         layer_name: String,
         z_bottom: f32,
@@ -313,6 +439,9 @@ impl LayerGeometry {
             LayerShape::MultiTrapezoid(multi_trap) => {
                 shapes.extend(multi_trap.to_egui_shapes());
             }
+            LayerShape::ThreeColumnTrapezoid(three_trap) => {
+                shapes.extend(three_trap.to_egui_shapes());
+            }
             LayerShape::Rectangle(rect) => {
                 shapes.push(rect.to_egui_shape());
                 if self.is_selected {
@@ -328,6 +457,7 @@ impl LayerGeometry {
         match &self.shape {
             LayerShape::Trapezoid(trap) => trap.contains_point(point),
             LayerShape::MultiTrapezoid(multi_trap) => multi_trap.contains_point(point),
+            LayerShape::ThreeColumnTrapezoid(three_trap) => three_trap.contains_point(point),
             LayerShape::Rectangle(rect) => rect.contains_point(point),
         }
     }
@@ -336,6 +466,7 @@ impl LayerGeometry {
         match &self.shape {
             LayerShape::Trapezoid(trap) => trap.get_bounds(),
             LayerShape::MultiTrapezoid(multi_trap) => multi_trap.get_bounds(),
+            LayerShape::ThreeColumnTrapezoid(three_trap) => three_trap.get_bounds(),
             LayerShape::Rectangle(rect) => rect.get_bounds(),
         }
     }
