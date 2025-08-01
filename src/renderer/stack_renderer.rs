@@ -598,13 +598,13 @@ impl StackRenderer {
 
     /// Create outlined text shapes (black outline + white text) for better visibility
     fn create_outlined_text_shapes(&self, pos: Pos2, text: &str, font_size: f32) -> Vec<Shape> {
-        use egui::epaint::FontId;
+        use egui::epaint::{FontId, TextShape};
         let mut shapes = Vec::new();
 
-        let _font_id = FontId::proportional(font_size);
-        let stroke_width = 1.5;
+        let font_id = FontId::proportional(font_size);
+        let stroke_width = 1.0;
 
-        // Create background stroke (black outline) for better readability
+        // Create black outline text shapes for better readability
         let offsets = [
             (-stroke_width, -stroke_width),
             (-stroke_width, 0.0),
@@ -619,19 +619,23 @@ impl StackRenderer {
         // Add black outline text shapes
         for (dx, dy) in offsets {
             let offset_pos = Pos2::new(pos.x + dx, pos.y + dy);
-
-            // Create a simple filled rectangle as outline
-            let text_width = font_size * 0.6 * text.len() as f32;
-            let text_height = font_size * 1.2;
-            let rect = Rect::from_center_size(offset_pos, Vec2::new(text_width, text_height));
-            shapes.push(Shape::rect_filled(rect, 2.0, Color32::BLACK));
+            let text_shape = TextShape::simple(
+                offset_pos,
+                font_id.clone(),
+                text.to_string(),
+                Color32::BLACK,
+            );
+            shapes.push(Shape::Text(text_shape));
         }
 
-        // Add main white text background
-        let text_width = font_size * 0.6 * text.len() as f32;
-        let text_height = font_size * 1.2;
-        let main_rect = Rect::from_center_size(pos, Vec2::new(text_width, text_height));
-        shapes.push(Shape::rect_filled(main_rect, 2.0, Color32::WHITE));
+        // Add main white text on top
+        let text_shape = TextShape::simple(
+            pos,
+            font_id,
+            text.to_string(),
+            Color32::WHITE,
+        );
+        shapes.push(Shape::Text(text_shape));
 
         shapes
     }
