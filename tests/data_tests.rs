@@ -149,8 +149,8 @@ fn test_conductor_resistance_calculation() {
     assert!(r_ref.is_some());
     let r_ref = r_ref.unwrap();
 
-    // Basic resistance = rpsq * length / (width * thickness) = 0.1 * 10 / (1.0 * 0.3) = 3.333...
-    assert_relative_eq!(r_ref, 3.3333333333333335, epsilon = 1e-10);
+    // Basic resistance = rpsq * length / width = 0.1 * 10 / 1.0 = 1.0
+    assert_relative_eq!(r_ref, 1.0, epsilon = 1e-10);
 
     // Test resistance at higher temperature
     let r_hot = layer.calculate_resistance(1.0, 10.0, 125.0, 25.0);
@@ -160,7 +160,7 @@ fn test_conductor_resistance_calculation() {
     // Should be higher due to positive temperature coefficient
     assert!(r_hot > r_ref);
 
-    // Test with lookup table
+    // Test with lookup table (sheet resistance table)
     let rho_table = LookupTable2D::new(
         vec![0.5, 1.0, 2.0],
         vec![0.1, 0.2],
@@ -170,8 +170,8 @@ fn test_conductor_resistance_calculation() {
 
     let r_table = layer.calculate_resistance(1.0, 10.0, 25.0, 25.0);
     assert!(r_table.is_some());
-    // Should use table value (0.10) instead of rpsq (0.1)
-    let expected = 0.10 * 10.0 / (1.0 * 0.3);
+    // Should use table value (0.10) with sheet resistance formula
+    let expected = 0.10 * 10.0 / 1.0; // Sheet resistance: rho * L / W
     assert_relative_eq!(r_table.unwrap(), expected, epsilon = 1e-10);
 }
 

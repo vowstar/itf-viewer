@@ -172,10 +172,16 @@ impl ConductorLayer {
         temperature: f64,
         reference_temp: f64,
     ) -> Option<f64> {
+        // Try to get RHO from different tables in priority order
         let base_rho = self
-            .rho_vs_width_spacing
+            .rho_vs_si_width_thickness
             .as_ref()
-            .and_then(|table| table.lookup(width, 0.0))
+            .and_then(|table| table.lookup(width, self.thickness))
+            .or_else(|| {
+                self.rho_vs_width_spacing
+                    .as_ref()
+                    .and_then(|table| table.lookup(width, 0.0))
+            })
             .or(self.electrical_props.rpsq)?;
 
         // Get CRT values from CRT_VS_SI_WIDTH table if available, otherwise use fixed values
@@ -196,7 +202,14 @@ impl ConductorLayer {
 
         let temp_adjusted_rho = base_rho * (1.0 + temp_coefficient);
 
-        Some(temp_adjusted_rho * length / (width * self.thickness))
+        // For RHO_VS_SI_WIDTH_AND_THICKNESS, use volume resistivity formula
+        // For RPSQ (sheet resistance), use sheet resistance formula
+        if self.rho_vs_si_width_thickness.is_some() {
+            Some(temp_adjusted_rho * length / (width * self.thickness))
+        } else {
+            // Sheet resistance formula: R = rpsq * L/W
+            Some(temp_adjusted_rho * length / width)
+        }
     }
 
     pub fn get_effective_width(&self, nominal_width: f64, spacing: f64) -> f64 {
