@@ -7,6 +7,7 @@ pub struct Toolbar {
     pub show_dimensions: bool,
     pub show_layer_names: bool,
     pub show_schematic_mode: bool,
+    pub show_resistance_calculator: bool,
     pub layer_width: f32,
     pub zoom_level: f32,
 }
@@ -17,6 +18,7 @@ impl Toolbar {
             show_dimensions: true,
             show_layer_names: true,
             show_schematic_mode: false,
+            show_resistance_calculator: false,
             layer_width: 200.0,
             zoom_level: 1.0,
         }
@@ -42,6 +44,23 @@ impl Toolbar {
                         if ui.button("Exit").clicked() {
                             action = ToolbarAction::Exit;
                             ui.close();
+                        }
+                    });
+
+                    ui.separator();
+
+                    // Tools menu
+                    ui.menu_button("Tools", |ui| {
+                        if ui
+                            .checkbox(
+                                &mut self.show_resistance_calculator,
+                                "Resistance Calculator",
+                            )
+                            .clicked()
+                        {
+                            action = ToolbarAction::ToggleResistanceCalculator(
+                                self.show_resistance_calculator,
+                            );
                         }
                     });
 
@@ -178,6 +197,10 @@ impl Toolbar {
     pub fn set_layer_width(&mut self, width: f32) {
         self.layer_width = width;
     }
+
+    pub fn set_show_resistance_calculator(&mut self, show: bool) {
+        self.show_resistance_calculator = show;
+    }
 }
 
 impl Default for Toolbar {
@@ -200,6 +223,7 @@ pub enum ToolbarAction {
     ToggleDimensions(bool),
     ToggleLayerNames(bool),
     ToggleSchematicMode(bool),
+    ToggleResistanceCalculator(bool),
 }
 
 #[cfg(test)]
@@ -294,6 +318,7 @@ mod tests {
             ToolbarAction::SetLayerWidth(300.0),
             ToolbarAction::ToggleDimensions(false),
             ToolbarAction::ToggleLayerNames(true),
+            ToolbarAction::ToggleResistanceCalculator(true),
         ];
 
         for action in actions {
@@ -310,6 +335,7 @@ mod tests {
                 ToolbarAction::ToggleDimensions(_) => {}
                 ToolbarAction::ToggleLayerNames(_) => {}
                 ToolbarAction::ToggleSchematicMode(_) => {}
+                ToolbarAction::ToggleResistanceCalculator(_) => {}
             }
         }
     }
