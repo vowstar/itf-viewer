@@ -238,7 +238,9 @@ fn test_conductor_properties() {
 
         // Test effective width calculation
         let eff_width = metal1.get_effective_width(0.2, 0.15);
-        assert!(eff_width <= 0.2); // Should be reduced due to etch
+        // With negative etch bias values, effective width can be larger than nominal
+        // The etch table has negative values, meaning the metal gets wider
+        assert!(eff_width >= 0.2); // Should be increased due to negative etch bias
         assert!(eff_width > 0.0);
 
         // Test lookup table functionality

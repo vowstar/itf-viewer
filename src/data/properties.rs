@@ -108,6 +108,54 @@ impl LookupTable1D {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CrtVsSiWidthTable {
+    pub widths: Vec<f64>,
+    pub crt1_values: Vec<f64>,
+    pub crt2_values: Vec<f64>,
+}
+
+impl CrtVsSiWidthTable {
+    pub fn new(widths: Vec<f64>, crt1_values: Vec<f64>, crt2_values: Vec<f64>) -> Self {
+        Self {
+            widths,
+            crt1_values,
+            crt2_values,
+        }
+    }
+
+    pub fn lookup_crt_values(&self, width: f64) -> Option<(f64, f64)> {
+        if self.widths.is_empty() {
+            return None;
+        }
+
+        // If width is less than smallest entry, use the first entry (no extrapolation)
+        if width <= self.widths[0] {
+            return Some((self.crt1_values[0], self.crt2_values[0]));
+        }
+
+        // If width is greater than largest entry, use the last entry (no extrapolation)
+        if width >= self.widths[self.widths.len() - 1] {
+            let last_idx = self.widths.len() - 1;
+            return Some((self.crt1_values[last_idx], self.crt2_values[last_idx]));
+        }
+
+        // Linear interpolation between two points
+        for i in 0..self.widths.len() - 1 {
+            if width >= self.widths[i] && width <= self.widths[i + 1] {
+                let t = (width - self.widths[i]) / (self.widths[i + 1] - self.widths[i]);
+                let crt1 =
+                    self.crt1_values[i] + t * (self.crt1_values[i + 1] - self.crt1_values[i]);
+                let crt2 =
+                    self.crt2_values[i] + t * (self.crt2_values[i + 1] - self.crt2_values[i]);
+                return Some((crt1, crt2));
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcessVariation {
     pub density_polynomial_orders: Vec<u32>,
     pub width_polynomial_orders: Vec<u32>,
@@ -194,5 +242,38 @@ mod tests {
         // Expected: coeffs[0]*density^0*width^0 + coeffs[1]*density^0*width^1 + coeffs[2]*density^1*width^0 + coeffs[3]*density^1*width^1
         // = 1.0*1*1 + 2.0*1*0.8 + 3.0*0.5*1 + 4.0*0.5*0.8 = 1.0 + 1.6 + 1.5 + 1.6 = 5.7
         assert_relative_eq!(result, 5.7, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_crt_vs_si_width_table() {
+        let table = CrtVsSiWidthTable::new(
+            vec![0.39, 0.45, 0.55, 0.70],
+            vec![3.649e-3, 3.683e-3, 3.712e-3, 3.742e-3],
+            vec![-8.535e-7, -8.532e-7, -8.247e-7, -8.902e-7],
+        );
+
+        // Test exact matches
+        let result = table.lookup_crt_values(0.39).unwrap();
+        assert_relative_eq!(result.0, 3.649e-3, epsilon = 1e-10);
+        assert_relative_eq!(result.1, -8.535e-7, epsilon = 1e-10);
+
+        // Test interpolation
+        let result = table.lookup_crt_values(0.42).unwrap();
+        // Should interpolate between 0.39 and 0.45
+        let t = (0.42 - 0.39) / (0.45 - 0.39);
+        let expected_crt1 = 3.649e-3 + t * (3.683e-3 - 3.649e-3);
+        let expected_crt2 = -8.535e-7 + t * (-8.532e-7 - (-8.535e-7));
+        assert_relative_eq!(result.0, expected_crt1, epsilon = 1e-10);
+        assert_relative_eq!(result.1, expected_crt2, epsilon = 1e-10);
+
+        // Test boundary conditions - below range
+        let result = table.lookup_crt_values(0.30).unwrap();
+        assert_relative_eq!(result.0, 3.649e-3, epsilon = 1e-10);
+        assert_relative_eq!(result.1, -8.535e-7, epsilon = 1e-10);
+
+        // Test boundary conditions - above range
+        let result = table.lookup_crt_values(1.0).unwrap();
+        assert_relative_eq!(result.0, 3.742e-3, epsilon = 1e-10);
+        assert_relative_eq!(result.1, -8.902e-7, epsilon = 1e-10);
     }
 }

@@ -246,14 +246,16 @@ pub fn parse_number_list(input: &str) -> IResult<&str, Vec<f64>> {
 }
 
 pub fn parse_2d_number_matrix(input: &str) -> IResult<&str, Vec<Vec<f64>>> {
-    use nom::character::complete::{line_ending, space1};
+    use nom::character::complete::space1;
+    use nom::multi::many1;
+
     preceded(
         multispace0,
         delimited(
             char('{'),
             preceded(
                 multispace0,
-                separated_list0(line_ending, separated_list1(space1, double)),
+                many1(preceded(multispace0, separated_list1(space1, double))),
             ),
             preceded(multispace0, char('}')),
         ),

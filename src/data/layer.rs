@@ -79,9 +79,11 @@ pub struct ConductorLayer {
     pub electrical_props: ElectricalProperties,
     pub physical_props: PhysicalProperties,
     pub rho_vs_width_spacing: Option<LookupTable2D>,
+    pub rho_vs_si_width_thickness: Option<LookupTable2D>,
     pub etch_vs_width_spacing: Option<LookupTable2D>,
     pub etch_from_top: Option<LookupTable2D>,
     pub thickness_vs_width_spacing: Option<LookupTable2D>,
+    pub crt_vs_si_width: Option<CrtVsSiWidthTable>,
     pub process_variation: Option<ProcessVariation>,
     pub resistive_only_etch: Option<f64>,
     pub capacitive_only_etch: Option<f64>,
@@ -107,9 +109,11 @@ impl ConductorLayer {
                 dielectric_constant: None,
             },
             rho_vs_width_spacing: None,
+            rho_vs_si_width_thickness: None,
             etch_vs_width_spacing: None,
             etch_from_top: None,
             thickness_vs_width_spacing: None,
+            crt_vs_si_width: None,
             process_variation: None,
             resistive_only_etch: None,
             capacitive_only_etch: None,
@@ -174,9 +178,21 @@ impl ConductorLayer {
             .and_then(|table| table.lookup(width, 0.0))
             .or(self.electrical_props.rpsq)?;
 
-        let temp_coefficient = self.electrical_props.crt1.unwrap_or(0.0)
-            * (temperature - reference_temp)
-            + self.electrical_props.crt2.unwrap_or(0.0) * (temperature - reference_temp).powi(2);
+        // Get CRT values from CRT_VS_SI_WIDTH table if available, otherwise use fixed values
+        let (crt1, crt2) = if let Some(crt_table) = &self.crt_vs_si_width {
+            crt_table.lookup_crt_values(width).unwrap_or((
+                self.electrical_props.crt1.unwrap_or(0.0),
+                self.electrical_props.crt2.unwrap_or(0.0),
+            ))
+        } else {
+            (
+                self.electrical_props.crt1.unwrap_or(0.0),
+                self.electrical_props.crt2.unwrap_or(0.0),
+            )
+        };
+
+        let temp_coefficient =
+            crt1 * (temperature - reference_temp) + crt2 * (temperature - reference_temp).powi(2);
 
         let temp_adjusted_rho = base_rho * (1.0 + temp_coefficient);
 

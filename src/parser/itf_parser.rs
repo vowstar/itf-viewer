@@ -459,19 +459,21 @@ impl ItfParser {
             .parse(remaining)
             {
                 remaining = rest;
-            } else if let Ok((rest, _)) = preceded(
+            } else if let Ok((rest, table)) = preceded(
                 (multispace0, parse_keyword("RHO_VS_SI_WIDTH_AND_THICKNESS")),
-                |input| self.skip_complex_block(input),
+                |input| self.parse_rho_vs_si_width_thickness_table(input),
             )
             .parse(remaining)
             {
+                layer.rho_vs_si_width_thickness = Some(table);
                 remaining = rest;
-            } else if let Ok((rest, _)) =
+            } else if let Ok((rest, table)) =
                 preceded((multispace0, parse_keyword("CRT_VS_SI_WIDTH")), |input| {
-                    self.skip_complex_block(input)
+                    self.parse_crt_vs_si_width_table(input)
                 })
                 .parse(remaining)
             {
+                layer.crt_vs_si_width = Some(table);
                 remaining = rest;
             } else {
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
@@ -628,6 +630,93 @@ impl ItfParser {
             input,
             ViaConnection::new(name, from_layer, to_layer, area, rpv),
         ))
+    }
+
+    fn parse_crt_vs_si_width_table<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, CrtVsSiWidthTable> {
+        let (input, _) = preceded(multispace0, parse_left_brace).parse(input)?;
+
+        let mut widths = Vec::new();
+        let mut crt1_values = Vec::new();
+        let mut crt2_values = Vec::new();
+        let mut remaining = input;
+
+        // Parse tuples of the form (width, crt1, crt2)
+        while !remaining.trim_start().starts_with('}') && !remaining.trim().is_empty() {
+            // Skip comments and empty lines
+            let trimmed = remaining.trim_start();
+            if trimmed.is_empty() || trimmed.starts_with("$") {
+                let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
+                remaining = &remaining[next_line_end..];
+                if remaining.starts_with('\n') {
+                    remaining = &remaining[1..];
+                }
+                continue;
+            }
+
+            // Find opening parenthesis
+            if let Some(open_paren) = remaining.find('(') {
+                let after_paren = &remaining[open_paren + 1..];
+                // Find closing parenthesis
+                if let Some(close_paren) = after_paren.find(')') {
+                    let tuple_content = &after_paren[..close_paren];
+                    // Split by commas and parse numbers
+                    let parts: Vec<&str> = tuple_content.split(',').collect();
+                    if parts.len() == 3 {
+                        if let (Ok(width), Ok(crt1), Ok(crt2)) = (
+                            parts[0].trim().parse::<f64>(),
+                            parts[1].trim().parse::<f64>(),
+                            parts[2].trim().parse::<f64>(),
+                        ) {
+                            widths.push(width);
+                            crt1_values.push(crt1);
+                            crt2_values.push(crt2);
+                            remaining = &after_paren[close_paren + 1..];
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Skip this line if we can't parse it
+            let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
+            remaining = &remaining[next_line_end..];
+            if remaining.starts_with('\n') {
+                remaining = &remaining[1..];
+            }
+        }
+
+        let (input, _) = preceded(multispace0, parse_right_brace).parse(remaining)?;
+
+        Ok((
+            input,
+            CrtVsSiWidthTable::new(widths, crt1_values, crt2_values),
+        ))
+    }
+
+    fn parse_rho_vs_si_width_thickness_table<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, LookupTable2D> {
+        let (input, _) = preceded(multispace0, parse_left_brace).parse(input)?;
+
+        let (input, widths) =
+            preceded((multispace0, parse_keyword("WIDTH")), parse_number_list).parse(input)?;
+
+        let (input, thicknesses) =
+            preceded((multispace0, parse_keyword("THICKNESS")), parse_number_list).parse(input)?;
+
+        let (input, values) = preceded(
+            (multispace0, parse_keyword("VALUES")),
+            parse_2d_number_matrix,
+        )
+        .parse(input)?;
+
+        let (input, _) = preceded(multispace0, parse_right_brace).parse(input)?;
+
+        Ok((input, LookupTable2D::new(widths, thicknesses, values)))
     }
 }
 
