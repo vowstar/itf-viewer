@@ -37,32 +37,66 @@ impl LookupTable2D {
     }
 
     pub fn lookup(&self, width: f64, spacing: f64) -> Option<f64> {
-        let width_idx = self.find_index(&self.widths, width)?;
-        let spacing_idx = self.find_index(&self.spacings, spacing)?;
+        if self.widths.is_empty() || self.spacings.is_empty() || self.values.is_empty() {
+            return None;
+        }
 
-        self.values.get(spacing_idx)?.get(width_idx).copied()
+        // Find interpolation indices for width
+        let (w_idx1, w_idx2, w_t) = self.find_interpolation_indices(&self.widths, width)?;
+
+        // Find interpolation indices for spacing
+        let (s_idx1, s_idx2, s_t) = self.find_interpolation_indices(&self.spacings, spacing)?;
+
+        // Get the four corner values for bilinear interpolation
+        let v11 = self.values.get(s_idx1)?.get(w_idx1).copied()?;
+        let v12 = self.values.get(s_idx1)?.get(w_idx2).copied()?;
+        let v21 = self.values.get(s_idx2)?.get(w_idx1).copied()?;
+        let v22 = self.values.get(s_idx2)?.get(w_idx2).copied()?;
+
+        // Bilinear interpolation
+        let v1 = v11 + w_t * (v12 - v11); // Interpolate along width for spacing 1
+        let v2 = v21 + w_t * (v22 - v21); // Interpolate along width for spacing 2
+        let result = v1 + s_t * (v2 - v1); // Interpolate along spacing
+
+        println!("2D Lookup interpolation debug:");
+        println!(
+            "  Width: {:.6} between indices {} ({:.6}) and {} ({:.6}), t={:.6}",
+            width, w_idx1, self.widths[w_idx1], w_idx2, self.widths[w_idx2], w_t
+        );
+        println!(
+            "  Spacing: {:.6} between indices {} ({:.6}) and {} ({:.6}), t={:.6}",
+            spacing, s_idx1, self.spacings[s_idx1], s_idx2, self.spacings[s_idx2], s_t
+        );
+        println!("  Corner values: v11={v11:.6e}, v12={v12:.6e}, v21={v21:.6e}, v22={v22:.6e}");
+        println!("  Interpolated result: {result:.6e}");
+
+        Some(result)
     }
 
-    fn find_index(&self, array: &[f64], value: f64) -> Option<usize> {
+    fn find_interpolation_indices(&self, array: &[f64], value: f64) -> Option<(usize, usize, f64)> {
         if array.is_empty() {
             return None;
         }
 
+        // Clamp to boundaries
         if value <= array[0] {
-            return Some(0);
+            return Some((0, 0, 0.0));
         }
 
         if value >= array[array.len() - 1] {
-            return Some(array.len() - 1);
+            let last_idx = array.len() - 1;
+            return Some((last_idx, last_idx, 0.0));
         }
 
+        // Find the interval containing the value
         for i in 0..array.len() - 1 {
             if value >= array[i] && value <= array[i + 1] {
-                return if (value - array[i]).abs() < (value - array[i + 1]).abs() {
-                    Some(i)
+                let t = if array[i + 1] != array[i] {
+                    (value - array[i]) / (array[i + 1] - array[i])
                 } else {
-                    Some(i + 1)
+                    0.0
                 };
+                return Some((i, i + 1, t));
             }
         }
 

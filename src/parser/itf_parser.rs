@@ -86,6 +86,21 @@ impl ItfParser {
             {
                 stack.technology_info.background_er = Some(er);
                 remaining = rest;
+            } else if let Ok((rest, table)) =
+                preceded((multispace0, parse_keyword("CRT_VS_SI_WIDTH")), |input| {
+                    self.parse_crt_vs_si_width_table(input)
+                })
+                .parse(remaining)
+            {
+                // Associate CRT_VS_SI_WIDTH table with the most recent conductor layer
+                if let Some(Layer::Conductor(conductor)) = stack.layers.last_mut() {
+                    conductor.crt_vs_si_width = Some(table);
+                    println!(
+                        "INFO: Associated CRT_VS_SI_WIDTH table with conductor '{}'",
+                        conductor.name
+                    );
+                }
+                remaining = rest;
             } else {
                 let next_line_end = remaining.find('\n').unwrap_or(remaining.len());
                 let skipped_line = &remaining[..next_line_end];

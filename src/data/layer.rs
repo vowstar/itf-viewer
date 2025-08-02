@@ -172,44 +172,95 @@ impl ConductorLayer {
         temperature: f64,
         reference_temp: f64,
     ) -> Option<f64> {
+        println!("=== Resistance Calculation Debug ===");
+        println!("Layer: {}", self.name);
+        println!(
+            "Width: {:.6} um, Length: {:.6} um, Thickness: {:.6} um",
+            width, length, self.thickness
+        );
+        println!("Temperature: {temperature:.2}°C, Reference: {reference_temp:.2}°C");
+
         // Try to get RHO from different tables in priority order
-        let base_rho = self
-            .rho_vs_si_width_thickness
-            .as_ref()
-            .and_then(|table| table.lookup(width, self.thickness))
-            .or_else(|| {
-                self.rho_vs_width_spacing
-                    .as_ref()
-                    .and_then(|table| table.lookup(width, 0.0))
-            })
-            .or(self.electrical_props.rpsq)?;
+        let (base_rho, rho_source) = if let Some(table) = &self.rho_vs_si_width_thickness {
+            if let Some(rho) = table.lookup(width, self.thickness) {
+                println!("Using RHO_VS_SI_WIDTH_AND_THICKNESS table lookup");
+                println!("  Found rho = {rho:.6e} ohm*um (volume resistivity)");
+                (rho, "RHO_VS_SI_WIDTH_AND_THICKNESS")
+            } else {
+                println!("RHO_VS_SI_WIDTH_AND_THICKNESS table lookup failed");
+                return None;
+            }
+        } else if let Some(table) = &self.rho_vs_width_spacing {
+            if let Some(rho) = table.lookup(width, 0.0) {
+                println!("Using RHO_VS_WIDTH_SPACING table lookup");
+                println!("  Found rho = {rho:.6e} ohm/sq (sheet resistance)");
+                (rho, "RHO_VS_WIDTH_SPACING")
+            } else {
+                println!("RHO_VS_WIDTH_SPACING table lookup failed");
+                return None;
+            }
+        } else if let Some(rpsq) = self.electrical_props.rpsq {
+            println!("Using fixed RPSQ value");
+            println!("  RPSQ = {rpsq:.6e} ohm/sq");
+            (rpsq, "RPSQ")
+        } else {
+            println!("No resistivity data available");
+            return None;
+        };
 
         // Get CRT values from CRT_VS_SI_WIDTH table if available, otherwise use fixed values
         let (crt1, crt2) = if let Some(crt_table) = &self.crt_vs_si_width {
-            crt_table.lookup_crt_values(width).unwrap_or((
-                self.electrical_props.crt1.unwrap_or(0.0),
-                self.electrical_props.crt2.unwrap_or(0.0),
-            ))
+            if let Some((c1, c2)) = crt_table.lookup_crt_values(width) {
+                println!("Using CRT_VS_SI_WIDTH table lookup");
+                println!("  Interpolated CRT1 = {c1:.6e} /°C, CRT2 = {c2:.6e} /°C²");
+                (c1, c2)
+            } else {
+                let c1 = self.electrical_props.crt1.unwrap_or(0.0);
+                let c2 = self.electrical_props.crt2.unwrap_or(0.0);
+                println!("CRT_VS_SI_WIDTH lookup failed, using fixed values");
+                println!("  Fixed CRT1 = {c1:.6e} /°C, CRT2 = {c2:.6e} /°C²");
+                (c1, c2)
+            }
         } else {
-            (
-                self.electrical_props.crt1.unwrap_or(0.0),
-                self.electrical_props.crt2.unwrap_or(0.0),
-            )
+            let c1 = self.electrical_props.crt1.unwrap_or(0.0);
+            let c2 = self.electrical_props.crt2.unwrap_or(0.0);
+            println!("Using fixed CRT values");
+            println!("  Fixed CRT1 = {c1:.6e} /°C, CRT2 = {c2:.6e} /°C²");
+            (c1, c2)
         };
 
-        let temp_coefficient =
-            crt1 * (temperature - reference_temp) + crt2 * (temperature - reference_temp).powi(2);
+        let temp_diff = temperature - reference_temp;
+        let temp_coefficient = crt1 * temp_diff + crt2 * temp_diff.powi(2);
+        println!("Temperature coefficient calculation:");
+        println!("  ΔT = {temp_diff:.2}°C");
+        println!("  Temp coefficient = CRT1*ΔT + CRT2*ΔT² = {temp_coefficient:.6e}");
 
         let temp_adjusted_rho = base_rho * (1.0 + temp_coefficient);
+        println!("Temperature adjusted resistivity:");
+        println!("  ρ(T) = ρ₀ * (1 + temp_coeff) = {temp_adjusted_rho:.6e}");
 
-        // For RHO_VS_SI_WIDTH_AND_THICKNESS, use volume resistivity formula
-        // For RPSQ (sheet resistance), use sheet resistance formula
-        if self.rho_vs_si_width_thickness.is_some() {
-            Some(temp_adjusted_rho * length / (width * self.thickness))
+        // Calculate resistance based on resistivity type
+        let resistance = if rho_source == "RHO_VS_SI_WIDTH_AND_THICKNESS" {
+            // Volume resistivity formula: R = ρ * L / (W * T)
+            let r = temp_adjusted_rho * length / (width * self.thickness);
+            println!("Using volume resistivity formula:");
+            println!(
+                "  R = ρ * L / (W * T) = {:.6e} * {:.6} / ({:.6} * {:.6}) = {:.6e} Ω",
+                temp_adjusted_rho, length, width, self.thickness, r
+            );
+            r
         } else {
-            // Sheet resistance formula: R = rpsq * L/W
-            Some(temp_adjusted_rho * length / width)
-        }
+            // Sheet resistance formula: R = Rsq * L / W
+            let r = temp_adjusted_rho * length / width;
+            println!("Using sheet resistance formula:");
+            println!("  R = Rsq * L / W = {temp_adjusted_rho:.6e} * {length:.6} / {width:.6} = {r:.6e} Ω");
+            r
+        };
+
+        println!("Final resistance: {resistance:.6e} Ω");
+        println!("==============================");
+
+        Some(resistance)
     }
 
     pub fn get_effective_width(&self, nominal_width: f64, spacing: f64) -> f64 {

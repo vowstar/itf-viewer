@@ -22,12 +22,19 @@ pub struct ResistancePlotWindow {
     temperature_end: f64,   // End temperature for plot
     reference_temp: f64,    // Reference temperature (usually 25°C)
 
+    // Multi-thickness plotting
+    enable_multi_thickness: bool,
+    thickness_values: Vec<f64>, // Additional thickness values to plot
+
     // Results
     calculated_resistance: Option<f64>,
     calculated_sheet_resistance: Option<f64>,
     curves: Vec<ResistanceCurve>,
     curves_generated: bool,
     error_message: Option<String>,
+
+    // Calculation details for display
+    calculation_details: Option<String>,
 
     // Display settings
     plot_title: String,
@@ -47,12 +54,17 @@ impl ResistancePlotWindow {
             temperature_end: 150.0,   // 150°C
             reference_temp: 25.0,     // 25°C
 
+            // Multi-thickness plotting
+            enable_multi_thickness: false,
+            thickness_values: vec![0.1, 0.2, 0.3, 0.5], // Default thickness values
+
             // Results
             calculated_resistance: None,
             calculated_sheet_resistance: None,
             curves: Vec::new(),
             curves_generated: false,
             error_message: None,
+            calculation_details: None,
 
             // Display settings
             plot_title: "Resistance vs Temperature".to_string(),
@@ -106,6 +118,11 @@ impl ResistancePlotWindow {
 
         // Results display
         self.show_results(ui);
+
+        ui.separator();
+
+        // Calculation details display
+        self.show_calculation_details(ui);
 
         ui.separator();
 
@@ -212,6 +229,11 @@ impl ResistancePlotWindow {
                         });
                         ui.end_row();
 
+                        // Multi-thickness option
+                        ui.label("Multi-thickness plot:");
+                        ui.checkbox(&mut self.enable_multi_thickness, "Enable");
+                        ui.end_row();
+
                         // Calculate button
                         ui.label("");
                         if ui.button("Calculate & Plot").clicked() {
@@ -252,6 +274,40 @@ impl ResistancePlotWindow {
                         ui.end_row();
                     });
             });
+    }
+
+    fn show_calculation_details(&mut self, ui: &mut egui::Ui) {
+        if self.calculation_details.is_some() {
+            CollapsingHeader::new("Calculation Details & Formulas")
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label("Formulas used in calculation:");
+                        ui.separator();
+
+                        ui.label("Temperature coefficient:");
+                        ui.monospace("α(T) = CRT1 × ΔT + CRT2 × ΔT²");
+                        ui.label("where ΔT = T - T_ref");
+                        ui.separator();
+
+                        ui.label("Temperature-adjusted resistivity:");
+                        ui.monospace("ρ(T) = ρ₀ × (1 + α(T))");
+                        ui.separator();
+
+                        ui.label("Resistance calculation:");
+                        ui.monospace("For volume resistivity (RHO_VS_SI_WIDTH_AND_THICKNESS):");
+                        ui.monospace("  R = ρ(T) × L / (W × T)");
+                        ui.monospace("For sheet resistance (RPSQ or other tables):");
+                        ui.monospace("  R = Rsq(T) × L / W");
+                        ui.separator();
+
+                        if let Some(ref details) = self.calculation_details {
+                            ui.label("Current calculation parameters:");
+                            ui.monospace(details);
+                        }
+                    });
+                });
+        }
     }
 
     fn show_temperature_plot(&mut self, ui: &mut egui::Ui) {
@@ -333,12 +389,14 @@ impl ResistancePlotWindow {
         self.curves_generated = false;
         self.curves.clear();
         self.error_message = None;
+        self.calculation_details = None;
     }
 
     fn calculate_resistance(&mut self, stack: &ProcessStack) {
         self.error_message = None;
         self.calculated_resistance = None;
         self.calculated_sheet_resistance = None;
+        self.calculation_details = None;
 
         let conductor = match self.get_selected_conductor(stack) {
             Some(c) => c,
@@ -347,6 +405,32 @@ impl ResistancePlotWindow {
                 return;
             }
         };
+
+        // Capture calculation details
+        let mut details = String::new();
+        details.push_str(&format!("Layer: {}\n", conductor.name));
+        details.push_str(&format!("Width: {:.6} μm\n", self.width));
+        details.push_str(&format!("Length: {:.6} μm\n", self.length));
+        details.push_str(&format!("Thickness: {:.6} μm\n", conductor.thickness));
+        details.push_str(&format!(
+            "Reference Temperature: {:.1}°C\n",
+            self.reference_temp
+        ));
+
+        // Check available data
+        if conductor.rho_vs_si_width_thickness.is_some() {
+            details.push_str("Data source: RHO_VS_SI_WIDTH_AND_THICKNESS table\n");
+        } else if conductor.rho_vs_width_spacing.is_some() {
+            details.push_str("Data source: RHO_VS_WIDTH_SPACING table\n");
+        } else if conductor.electrical_props.rpsq.is_some() {
+            details.push_str("Data source: Fixed RPSQ value\n");
+        }
+
+        if conductor.crt_vs_si_width.is_some() {
+            details.push_str("CRT source: CRT_VS_SI_WIDTH table (interpolated)\n");
+        } else {
+            details.push_str("CRT source: Fixed CRT1, CRT2 values\n");
+        }
 
         // Calculate resistance at reference temperature
         match conductor.calculate_resistance(
@@ -359,6 +443,13 @@ impl ResistancePlotWindow {
                 self.calculated_resistance = Some(resistance);
                 // Calculate sheet resistance: Rsq = R * (W/L)
                 self.calculated_sheet_resistance = Some(resistance * self.width / self.length);
+
+                details.push_str(&format!("Calculated resistance: {resistance:.6e} Ω\n"));
+                details.push_str(&format!(
+                    "Sheet resistance: {:.6e} Ω/sq",
+                    resistance * self.width / self.length
+                ));
+                self.calculation_details = Some(details);
             }
             None => {
                 self.error_message =
@@ -379,34 +470,88 @@ impl ResistancePlotWindow {
         let num_points = 100;
         let temp_step = (self.temperature_end - self.temperature_start) / (num_points as f64 - 1.0);
 
-        let mut curve_data = Vec::new();
-        for i in 0..num_points {
-            let temperature = self.temperature_start + (i as f64) * temp_step;
+        let conductor_name = self
+            .selected_conductor
+            .as_ref()
+            .unwrap_or(&"Unknown".to_string())
+            .clone();
 
-            if let Some(resistance) = conductor.calculate_resistance(
-                self.width,
-                self.length,
-                temperature,
-                self.reference_temp,
-            ) {
-                curve_data.push((temperature, resistance));
+        // Define colors for different thickness curves
+        let colors = [
+            egui::Color32::BLUE,
+            egui::Color32::RED,
+            egui::Color32::GREEN,
+            egui::Color32::YELLOW,
+            egui::Color32::from_rgb(128, 0, 128),   // Purple
+            egui::Color32::from_rgb(255, 165, 0),   // Orange
+            egui::Color32::from_rgb(0, 255, 255),   // Cyan
+            egui::Color32::from_rgb(255, 192, 203), // Pink
+        ];
+
+        if self.enable_multi_thickness && conductor.rho_vs_si_width_thickness.is_some() {
+            // Generate curves for multiple thickness values
+            for (thickness_idx, &thickness) in self.thickness_values.iter().enumerate() {
+                let mut curve_data = Vec::new();
+
+                // Create a modified conductor with the target thickness
+                let mut modified_conductor = conductor.clone();
+                modified_conductor.thickness = thickness;
+
+                for i in 0..num_points {
+                    let temperature = self.temperature_start + (i as f64) * temp_step;
+
+                    if let Some(resistance) = modified_conductor.calculate_resistance(
+                        self.width,
+                        self.length,
+                        temperature,
+                        self.reference_temp,
+                    ) {
+                        curve_data.push((temperature, resistance));
+                    }
+                }
+
+                if !curve_data.is_empty() {
+                    let curve = ResistanceCurve {
+                        name: format!(
+                            "{} (W={:.3}μm, T={:.3}μm)",
+                            conductor_name, self.width, thickness
+                        ),
+                        data_points: curve_data,
+                        color: colors[thickness_idx % colors.len()],
+                    };
+                    self.curves.push(curve);
+                }
+            }
+        } else {
+            // Generate single curve for the current layer thickness
+            let mut curve_data = Vec::new();
+            for i in 0..num_points {
+                let temperature = self.temperature_start + (i as f64) * temp_step;
+
+                if let Some(resistance) = conductor.calculate_resistance(
+                    self.width,
+                    self.length,
+                    temperature,
+                    self.reference_temp,
+                ) {
+                    curve_data.push((temperature, resistance));
+                }
+            }
+
+            if !curve_data.is_empty() {
+                let curve = ResistanceCurve {
+                    name: format!(
+                        "{} (W={:.3}μm, T={:.3}μm)",
+                        conductor_name, self.width, conductor.thickness
+                    ),
+                    data_points: curve_data,
+                    color: egui::Color32::BLUE,
+                };
+                self.curves.push(curve);
             }
         }
 
-        if !curve_data.is_empty() {
-            let conductor_name = self
-                .selected_conductor
-                .as_ref()
-                .unwrap_or(&"Unknown".to_string())
-                .clone();
-            let curve = ResistanceCurve {
-                name: format!("{} (W={:.3}μm)", conductor_name, self.width),
-                data_points: curve_data,
-                color: egui::Color32::BLUE,
-            };
-            self.curves.push(curve);
-            self.curves_generated = true;
-        }
+        self.curves_generated = !self.curves.is_empty();
     }
 
     fn get_selected_conductor<'a>(&self, stack: &'a ProcessStack) -> Option<&'a ConductorLayer> {
@@ -445,6 +590,8 @@ mod tests {
         assert_eq!(window.temperature_end, 150.0);
         assert_eq!(window.reference_temp, 25.0);
         assert!(!window.curves_generated);
+        assert!(!window.enable_multi_thickness);
+        assert!(window.calculation_details.is_none());
     }
 
     #[test]
@@ -487,6 +634,7 @@ mod tests {
             color: egui::Color32::RED,
         });
         window.error_message = Some("test error".to_string());
+        window.calculation_details = Some("test details".to_string());
 
         // Clear results
         window.clear_results();
@@ -496,6 +644,7 @@ mod tests {
         assert!(!window.curves_generated);
         assert!(window.curves.is_empty());
         assert!(window.error_message.is_none());
+        assert!(window.calculation_details.is_none());
     }
 
     #[test]

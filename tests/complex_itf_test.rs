@@ -31,11 +31,11 @@ fn test_parse_complex_itf_file() {
     println!("Total layers: {}", stack.layers.len());
     println!("Total vias: {}", stack.via_stack.vias.len());
 
-    // Find the M9 conductor layer which should have CRT_VS_SI_WIDTH
-    let m9_layer = stack.layers.iter().find(|layer| layer.name() == "M9");
+    // Find the M1 conductor layer which should have CRT_VS_SI_WIDTH
+    let m1_layer = stack.layers.iter().find(|layer| layer.name() == "M1");
 
-    if let Some(Layer::Conductor(conductor)) = m9_layer {
-        println!("Found M9 conductor layer");
+    if let Some(Layer::Conductor(conductor)) = m1_layer {
+        println!("Found M1 conductor layer");
 
         // Check if CRT_VS_SI_WIDTH was parsed
         if let Some(crt_table) = &conductor.crt_vs_si_width {
@@ -56,7 +56,7 @@ fn test_parse_complex_itf_file() {
                 );
             }
         } else {
-            println!("CRT_VS_SI_WIDTH table not found in M9");
+            println!("CRT_VS_SI_WIDTH table not found in M1");
         }
 
         // Check if RHO_VS_SI_WIDTH_AND_THICKNESS was parsed
@@ -70,7 +70,7 @@ fn test_parse_complex_itf_file() {
                 rho_table.values.get(0).map(|v| v.len()).unwrap_or(0)
             );
         } else {
-            println!("RHO_VS_SI_WIDTH_AND_THICKNESS table not found in M9");
+            println!("RHO_VS_SI_WIDTH_AND_THICKNESS table not found in M1");
         }
 
         // Check if ETCH_VS_WIDTH_AND_SPACING was parsed
@@ -84,9 +84,9 @@ fn test_parse_complex_itf_file() {
                 etch_table.values.get(0).map(|v| v.len()).unwrap_or(0)
             );
         } else {
-            println!("ETCH_VS_WIDTH_AND_SPACING table not found in M9");
+            println!("ETCH_VS_WIDTH_AND_SPACING table not found in M1");
         }
     } else {
-        panic!("M9 conductor layer not found");
+        panic!("M1 conductor layer not found");
     }
 }
