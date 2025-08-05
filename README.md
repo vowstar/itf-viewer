@@ -3,7 +3,7 @@
 A cross-platform GUI application for viewing and analyzing ITF (Interconnect Technology Format) files used in semiconductor process design.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
+[![CI](https://github.com/vowstar/itf-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/vowstar/itf-viewer/actions/workflows/ci.yml)
 
 ## Overview
 
