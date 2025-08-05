@@ -19,6 +19,14 @@ ITF Viewer visualizes semiconductor process stacks defined in ITF (Interconnect 
 - Via connection visualization
 - Thickness exaggeration mode for thin layers
 
+## Screenshots
+
+### Main Interface
+
+![ITF Viewer Main Interface](https://github.com/user-attachments/assets/ae98243d-30b2-462f-a402-a13e4359a31a)
+
+The main interface shows the ITF file structure with layer visualization, property panels, and interactive controls.
+
 ## Supported ITF Features
 
 - Conductor and dielectric layers
@@ -74,6 +82,12 @@ Launch the application to open the interactive GUI:
 
 - Toggle layer dimensions, names, and property displays
 - Schematic mode with thickness exaggeration
+
+### Temperature-Dependent Resistance Analysis
+
+![Resistance vs Temperature Analysis](https://github.com/user-attachments/assets/3e841e33-3704-408b-a4f4-b964b07363d7)
+
+The software can calculate and visualize resistance values at different temperatures, showing how electrical properties vary with thermal conditions.
 
 ## ITF Format Support
 
