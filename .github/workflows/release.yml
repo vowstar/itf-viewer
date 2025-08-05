@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: itf-viewer
+            asset_name: itf-viewer-linux-musl-amd64
+            target: x86_64-unknown-linux-musl
+          - os: windows-latest
+            artifact_name: itf-viewer.exe
+            asset_name: itf-viewer-windows-amd64.exe
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            artifact_name: itf-viewer
+            asset_name: itf-viewer-macos-amd64
+            target: x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxkbcommon-x11-dev
+
+      - name: Build
+        run: cargo build --release --verbose --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/itf-viewer-linux-musl-amd64/itf-viewer
+            artifacts/itf-viewer-windows-amd64.exe/itf-viewer.exe
+            artifacts/itf-viewer-macos-amd64/itf-viewer
+          generate_release_notes: true
+          draft: false
+          prerelease: false
