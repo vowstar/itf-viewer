@@ -43,13 +43,13 @@ fn test_parse_complex_itf_file() {
                 "CRT_VS_SI_WIDTH table found with {} entries",
                 crt_table.widths.len()
             );
-            assert!(crt_table.widths.len() > 0);
+            assert!(!crt_table.widths.is_empty());
             assert_eq!(crt_table.widths.len(), crt_table.crt1_values.len());
             assert_eq!(crt_table.widths.len(), crt_table.crt2_values.len());
 
             // Test some values from the actual file
             // (0.3900, 3.6490e-03, -8.5347e-07) should be the first entry
-            if crt_table.widths.len() > 0 {
+            if !crt_table.widths.is_empty() {
                 println!(
                     "First CRT entry: width={}, crt1={}, crt2={}",
                     crt_table.widths[0], crt_table.crt1_values[0], crt_table.crt2_values[0]
@@ -67,7 +67,7 @@ fn test_parse_complex_itf_file() {
             println!(
                 "Values: {}x{} matrix",
                 rho_table.values.len(),
-                rho_table.values.get(0).map(|v| v.len()).unwrap_or(0)
+                rho_table.values.first().map(|v| v.len()).unwrap_or(0)
             );
         } else {
             println!("RHO_VS_SI_WIDTH_AND_THICKNESS table not found in M1");
@@ -81,7 +81,7 @@ fn test_parse_complex_itf_file() {
             println!(
                 "Values: {}x{} matrix",
                 etch_table.values.len(),
-                etch_table.values.get(0).map(|v| v.len()).unwrap_or(0)
+                etch_table.values.first().map(|v| v.len()).unwrap_or(0)
             );
         } else {
             println!("ETCH_VS_WIDTH_AND_SPACING table not found in M1");

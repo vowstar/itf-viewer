@@ -1712,6 +1712,7 @@ dependencies = [
  "egui_plot",
  "env_logger",
  "nom",
+ "regex",
  "rfd",
  "serde",
  "tempfile",

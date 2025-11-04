@@ -194,7 +194,7 @@ impl ViaStack {
         self.vias.is_empty()
     }
 
-    pub fn iter(&self) -> std::slice::Iter<ViaConnection> {
+    pub fn iter(&self) -> std::slice::Iter<'_, ViaConnection> {
         self.vias.iter()
     }
 }

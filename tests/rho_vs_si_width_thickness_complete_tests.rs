@@ -50,16 +50,16 @@ fn test_rho_vs_si_width_thickness_parsing() {
             println!(
                 "Values: {}x{} matrix",
                 rho_table.values.len(),
-                rho_table.values.get(0).map(|v| v.len()).unwrap_or(0)
+                rho_table.values.first().map(|v| v.len()).unwrap_or(0)
             );
 
             // Basic structure validation
-            assert!(rho_table.widths.len() > 0, "Should have width entries");
+            assert!(!rho_table.widths.is_empty(), "Should have width entries");
             assert!(
-                rho_table.spacings.len() > 0,
+                !rho_table.spacings.is_empty(),
                 "Should have thickness entries"
             );
-            assert!(rho_table.values.len() > 0, "Should have value rows");
+            assert!(!rho_table.values.is_empty(), "Should have value rows");
 
             // Each row should have the same number of values as widths
             for (row_idx, row) in rho_table.values.iter().enumerate() {

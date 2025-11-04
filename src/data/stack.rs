@@ -205,8 +205,39 @@ impl ProcessStack {
         self.layers
             .iter()
             .filter(|layer| {
-                layer.is_conductor()
-                    && (layer.name().starts_with("metal") || layer.name().starts_with("alpa"))
+                if !layer.is_conductor() {
+                    return false;
+                }
+
+                let name = layer.name().to_lowercase();
+
+                // Match common metal layer naming patterns:
+                // - metal1, metal2, ... (standard naming)
+                // - M1, M2, M3, ... (short form)
+                // - T8M2, T8M3, ... (top metal layers)
+                // - alpa (aluminum pad)
+                // - RDL (redistribution layer)
+                // - AP (aluminum pad)
+
+                // Exclude poly and active area layers:
+                // - NPO, PPO, GNPO, GPPO (poly layers)
+                // - NAA, PAA (active area)
+                if name.contains("po")
+                    || name.contains("aa")
+                    || name.starts_with("g") && name.len() <= 4
+                {
+                    return false;
+                }
+
+                // Metal layer patterns
+                name.starts_with("metal")
+                    || name.starts_with("alpa")
+                    || name.starts_with("ap")
+                    || name == "rdl"
+                    || (name.starts_with("m")
+                        && name.len() >= 2
+                        && name.chars().nth(1).unwrap().is_ascii_digit())
+                    || name.contains("m") && name.chars().any(|c| c.is_ascii_digit())
             })
             .collect()
     }

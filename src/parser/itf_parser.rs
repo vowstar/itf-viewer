@@ -20,7 +20,28 @@ impl ItfParser {
         Self {}
     }
 
+    /// Check if the ITF file contains encrypted values
+    fn is_encrypted_itf(content: &str) -> bool {
+        // Look for patterns like "= @" followed by hexadecimal characters
+        // This indicates encrypted numeric values
+        use regex::Regex;
+
+        // Simple check: look for @ followed by hex digits after an equals sign
+        let re = Regex::new(r"=\s*@[0-9a-fA-F]+").unwrap();
+        re.is_match(content)
+    }
+
     pub fn parse_itf_file(&mut self, content: &str) -> Result<ProcessStack, ParseError> {
+        // Check if the ITF file is encrypted (contains @ symbol followed by hex)
+        if Self::is_encrypted_itf(content) {
+            return Err(ParseError::EncryptedFile(
+                "This ITF file contains encrypted values (marked with @ symbol). \
+                 Encrypted ITF files are not supported. \
+                 Please use an unencrypted version of the ITF file."
+                    .to_string(),
+            ));
+        }
+
         // Skip lexical analysis for now to get basic parsing working
         // let mut lexer = ItfLexer::new(content);
         // let _tokens = lexer.tokenize()
@@ -751,6 +772,9 @@ pub enum ParseError {
 
     #[error("Validation error: {0}")]
     ValidationError(String),
+
+    #[error("Encrypted ITF file: {0}")]
+    EncryptedFile(String),
 
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
