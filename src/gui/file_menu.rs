@@ -4,7 +4,8 @@
 use crate::data::ProcessStack;
 use crate::parser::parse_itf_file;
 use egui::{Context, RichText, Window};
-use rfd::FileDialog;
+use poll_promise::Promise;
+use rfd::AsyncFileDialog;
 use std::path::PathBuf;
 
 pub struct FileMenu {
@@ -12,6 +13,7 @@ pub struct FileMenu {
     pub selected_file: Option<PathBuf>,
     pub error_message: Option<String>,
     pub load_result: Option<Result<ProcessStack, String>>,
+    file_dialog_promise: Option<Promise<Option<PathBuf>>>,
 }
 
 impl FileMenu {
@@ -21,10 +23,22 @@ impl FileMenu {
             selected_file: None,
             error_message: None,
             load_result: None,
+            file_dialog_promise: None,
         }
     }
 
     pub fn show(&mut self, ctx: &Context) {
+        // Check if file dialog promise is ready
+        if let Some(promise) = &self.file_dialog_promise {
+            if let Some(result) = promise.ready() {
+                if let Some(path) = result {
+                    self.selected_file = Some(path.clone());
+                    self.load_file(path.clone());
+                }
+                self.file_dialog_promise = None;
+            }
+        }
+
         if self.is_open {
             Window::new("File Operations")
                 .resizable(false)
@@ -96,17 +110,21 @@ impl FileMenu {
     }
 
     fn open_native_file_dialog(&mut self) {
-        // Use native file dialog to select ITF files
-        if let Some(path) = FileDialog::new()
+        // Use async file dialog to avoid blocking the UI thread
+        let task = AsyncFileDialog::new()
             .add_filter("ITF Files", &["itf"])
             .add_filter("All Files", &["*"])
             .set_title("Select ITF File")
-            .pick_file()
-        {
-            self.selected_file = Some(path.clone());
-            // Automatically load the selected file
-            self.load_file(path);
-        }
+            .pick_file();
+
+        // Create a promise that resolves to the selected file path
+        // Use spawn_thread to run the async task in a background thread
+        let promise = Promise::spawn_thread("file_dialog", move || {
+            // Block on the async task in the background thread
+            pollster::block_on(async move { task.await.map(|handle| handle.path().to_path_buf()) })
+        });
+
+        self.file_dialog_promise = Some(promise);
     }
 
     fn load_file(&mut self, path: PathBuf) {

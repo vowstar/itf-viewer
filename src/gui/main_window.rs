@@ -8,7 +8,8 @@ use crate::gui::{
 };
 use crate::parser::parse_itf_file;
 use egui::Context;
-use rfd::FileDialog;
+use poll_promise::Promise;
+use rfd::AsyncFileDialog;
 use std::path::PathBuf;
 
 pub struct MainWindow {
@@ -21,6 +22,7 @@ pub struct MainWindow {
     current_stack: Option<ProcessStack>,
     show_about: bool,
     error_message: Option<String>,
+    file_dialog_promise: Option<Promise<Option<PathBuf>>>,
 }
 
 impl MainWindow {
@@ -35,6 +37,7 @@ impl MainWindow {
             current_stack: None,
             show_about: false,
             error_message: None,
+            file_dialog_promise: None,
         }
     }
 
@@ -45,6 +48,16 @@ impl MainWindow {
     }
 
     pub fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Check if file dialog promise is ready
+        if let Some(promise) = &self.file_dialog_promise {
+            if let Some(result) = promise.ready() {
+                if let Some(path) = result {
+                    self.load_file_from_path(path.clone());
+                }
+                self.file_dialog_promise = None;
+            }
+        }
+
         // Handle toolbar actions
         let toolbar_action = self.toolbar.show(ctx);
         self.handle_toolbar_action(toolbar_action);
@@ -256,15 +269,21 @@ impl MainWindow {
     }
 
     fn open_file_dialog(&mut self) {
-        // Directly open native file dialog to select ITF files
-        if let Some(path) = FileDialog::new()
+        // Use async file dialog to avoid blocking the UI thread
+        let task = AsyncFileDialog::new()
             .add_filter("ITF Files", &["itf"])
             .add_filter("All Files", &["*"])
             .set_title("Select ITF File")
-            .pick_file()
-        {
-            self.load_file_from_path(path);
-        }
+            .pick_file();
+
+        // Create a promise that resolves to the selected file path
+        // Use spawn_thread to run the async task in a background thread
+        let promise = Promise::spawn_thread("file_dialog", move || {
+            // Block on the async task in the background thread
+            pollster::block_on(async move { task.await.map(|handle| handle.path().to_path_buf()) })
+        });
+
+        self.file_dialog_promise = Some(promise);
     }
 
     fn load_file_from_path(&mut self, path: PathBuf) {
